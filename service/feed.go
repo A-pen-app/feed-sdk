@@ -6,13 +6,13 @@ import (
 	"github.com/A-pen-app/feed-sdk/model"
 )
 
-func NewFeed[T model.Scorable](s store) *service[T] {
-	return &service[T]{
+func NewFeed[T model.Scorable](s store) *Service[T] {
+	return &Service[T]{
 		store: s,
 	}
 }
 
-type service[T model.Scorable] struct {
+type Service[T model.Scorable] struct {
 	store store
 }
 
@@ -22,7 +22,7 @@ type store interface {
 	DeleteFeed(ctx context.Context, id string) error
 }
 
-func (f *service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
+func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
 	feeds := model.Feeds[T]{}
 	for i := range data {
 		feeds = append(
@@ -61,10 +61,10 @@ func (f *service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	return feeds, nil
 }
 
-func (s *service[T]) PatchFeed(ctx context.Context, id string, position int) error {
+func (s *Service[T]) PatchFeed(ctx context.Context, id string, position int) error {
 	return s.store.PatchFeed(ctx, id, position)
 }
 
-func (s *service[T]) DeleteFeed(ctx context.Context, id string) error {
+func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 	return s.store.DeleteFeed(ctx, id)
 }
