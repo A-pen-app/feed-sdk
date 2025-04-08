@@ -7,19 +7,24 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var Feed *feedStore
+func NewFeed(db *sqlx.DB) *store {
+	if db == nil {
+		panic("database connection cannot be nil")
+	}
 
-type feedStore struct {
+	return &store{
+		db: db,
+	}
 }
 
-func NewFeed() *feedStore {
-	return &feedStore{}
+type store struct {
+	db *sqlx.DB
 }
 
-func (fs *feedStore) GetFeedPositions(ctx context.Context, db *sqlx.DB) ([]model.FeedPosition, error) {
+func (f *store) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error) {
 	orders := []model.FeedPosition{}
 
-	if err := db.Select(
+	if err := f.db.Select(
 		&orders,
 		`
 		SELECT 
@@ -37,8 +42,8 @@ func (fs *feedStore) GetFeedPositions(ctx context.Context, db *sqlx.DB) ([]model
 	return orders, nil
 }
 
-func (fs *feedStore) PatchFeed(ctx context.Context, id string, position int, db *sqlx.DB) error {
-	_, err := db.NamedExec(
+func (f *store) PatchFeed(ctx context.Context, id string, position int) error {
+	_, err := f.db.NamedExec(
 		`
 		INSERT INTO 
 			feed 
@@ -63,8 +68,8 @@ func (fs *feedStore) PatchFeed(ctx context.Context, id string, position int, db 
 	return err
 }
 
-func (fs *feedStore) DeleteFeed(ctx context.Context, id string, db *sqlx.DB) error {
-	_, err := db.NamedExec(
+func (f *store) DeleteFeed(ctx context.Context, id string) error {
+	_, err := f.db.NamedExec(
 		`
 		DELETE FROM
 			feed 

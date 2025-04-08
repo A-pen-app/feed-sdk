@@ -6,25 +6,23 @@ import (
 	"github.com/A-pen-app/feed-sdk/model"
 )
 
-type FeedStore interface {
+func NewFeed[T model.Scorable](s store) *service[T] {
+	return &service[T]{
+		store: s,
+	}
+}
+
+type service[T model.Scorable] struct {
+	store store
+}
+
+type store interface {
 	GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error)
 	PatchFeed(ctx context.Context, id string, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 }
 
-var Feed *FeedSvc[model.Scorable]
-
-type FeedSvc[T model.Scorable] struct {
-	store FeedStore
-}
-
-func NewFeed[T model.Scorable](store FeedStore) *FeedSvc[T] {
-	return &FeedSvc[T]{
-		store: store,
-	}
-}
-
-func (f *FeedSvc[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
+func (f *service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
 	feeds := model.Feeds[T]{}
 	for i := range data {
 		feeds = append(
@@ -63,10 +61,10 @@ func (f *FeedSvc[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	return feeds, nil
 }
 
-func (f *FeedSvc[T]) PatchFeed(ctx context.Context, id string, position int) error {
-	return f.store.PatchFeed(ctx, id, position)
+func (s *service[T]) PatchFeed(ctx context.Context, id string, position int) error {
+	return s.store.PatchFeed(ctx, id, position)
 }
 
-func (f *FeedSvc[T]) DeleteFeed(ctx context.Context, id string) error {
-	return f.store.DeleteFeed(ctx, id)
+func (s *service[T]) DeleteFeed(ctx context.Context, id string) error {
+	return s.store.DeleteFeed(ctx, id)
 }
