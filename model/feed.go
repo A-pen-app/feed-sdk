@@ -36,7 +36,7 @@ const (
 )
 
 type FeedPosition struct {
-	FeedID   string   `json:"-" db:"feed_id"`
-	FeedType FeedType `json:"-" db:"feed_type"`
-	Position int64    `json:"-" db:"position"`
+	FeedID   string   `json:"id" db:"feed_id"`
+	FeedType FeedType `json:"type" db:"feed_type"`
+	Position int64    `json:"position" db:"position"`
 }
