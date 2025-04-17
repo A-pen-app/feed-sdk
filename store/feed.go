@@ -29,6 +29,7 @@ func (f *store) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, err
 		`
 		SELECT 
 			feed.feed_id,
+			feed.feed_type,
 			feed.position
 		FROM 
 			feed
@@ -42,28 +43,32 @@ func (f *store) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, err
 	return orders, nil
 }
 
-func (f *store) PatchFeed(ctx context.Context, id string, position int) error {
+func (f *store) PatchFeed(ctx context.Context, id string, feed_type model.FeedType, position int) error {
 	_, err := f.db.NamedExec(
 		`
 		INSERT INTO 
 			feed 
 			(
 				feed_id, 
+				feed_type,
 				position
 			)
 		VALUES 
 			(
 				:feed_id,
+				:feed_type,
 				:position
 			)
 		ON CONFLICT
 			(feed_id) 
 		DO UPDATE SET 
+			feed_type = :feed_type,
 			position = :position
 		`,
 		map[string]interface{}{
-			"feed_id":  id,
-			"position": position,
+			"feed_id":   id,
+			"feed_type": feed_type,
+			"position":  position,
 		})
 	return err
 }

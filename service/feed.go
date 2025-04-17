@@ -18,7 +18,7 @@ type Service[T model.Scorable] struct {
 
 type store interface {
 	GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error)
-	PatchFeed(ctx context.Context, id string, position int) error
+	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 }
 
@@ -61,8 +61,12 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	return feeds, nil
 }
 
-func (s *Service[T]) PatchFeed(ctx context.Context, id string, position int) error {
-	return s.store.PatchFeed(ctx, id, position)
+func (f *Service[T]) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error) {
+	return f.store.GetFeedPositions(ctx)
+}
+
+func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {
+	return s.store.PatchFeed(ctx, id, feedtype, position)
 }
 
 func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
