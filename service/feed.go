@@ -75,7 +75,9 @@ func (f *Service[T]) GetFeedPositions(ctx context.Context, maxPositions int) ([]
 				continue
 			}
 		}
-		positions = append(positions, model.FeedPosition{})
+		positions = append(positions, model.FeedPosition{
+			Position: int64(i),
+		})
 	}
 	return positions, nil
 }
