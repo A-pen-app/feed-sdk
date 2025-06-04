@@ -61,8 +61,23 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	return feeds, nil
 }
 
-func (f *Service[T]) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error) {
-	return f.store.GetFeedPositions(ctx)
+func (f *Service[T]) GetFeedPositions(ctx context.Context, maxPositions int) ([]model.FeedPosition, error) {
+	usedPositions, err := f.store.GetFeedPositions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	positions := []model.FeedPosition{}
+	for i, j := 0, 0; i < maxPositions; i++ {
+		if j < len(usedPositions) {
+			if usedPositions[j].Position == int64(i) {
+				positions = append(positions, usedPositions[j])
+				j++
+				continue
+			}
+		}
+		positions = append(positions, model.FeedPosition{})
+	}
+	return positions, nil
 }
 
 func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {
