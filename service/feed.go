@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 
 	"github.com/A-pen-app/feed-sdk/model"
 )
@@ -51,30 +52,24 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 
 	// create a position->feed map
 	positionedFeedMap := make(map[int64]model.Feed[T])
-	for i := 0; i < len(feeds); {
-		// if the feed is positioned, pull it out and put into map
+
+	nonPositionedFeeds := feeds[:0]
+	for i := 0; i < len(feeds); i++ {
 		if v, exists := positionMap[feeds[i].ID]; exists {
+			// if the feed is positioned, put it into map
 			positionedFeedMap[v] = feeds[i]
-			feeds = append(feeds[:i], feeds[i+1:]...)
-			continue
+		} else {
+			// collect it otherwise
+			nonPositionedFeeds = append(nonPositionedFeeds, feeds[i])
 		}
-		i++
 	}
+	feeds = nonPositionedFeeds
 
 	// insert positioned feeds into feeds
 	for _, p := range positions {
-		// get the feed from map
 		feed := positionedFeedMap[p.Position]
-		// insert the feed into feeds, since positions are in ascending order, later insertions will not affect the position of inserted ones.
-		feeds = append(
-			feeds[:p.Position],
-			append(
-				model.Feeds[T]{feed},
-				feeds[p.Position:]...,
-			)...,
-		)
+		feeds = slices.Insert(feeds, int(p.Position), feed)
 	}
-
 	return feeds, nil
 }
 
