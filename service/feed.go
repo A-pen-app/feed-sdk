@@ -45,13 +45,13 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	}
 
 	// create a position map to speed up the discovery of positioned feeds.
-	positionMap := make(map[string]int64)
+	positionMap := make(map[string]int)
 	for _, position := range positions {
 		positionMap[position.FeedID] = position.Position
 	}
 
 	// create a position->feed map
-	positionedFeedMap := make(map[int64]model.Feed[T])
+	positionedFeedMap := make(map[int]model.Feed[T])
 
 	nonPositionedFeeds := feeds[:0]
 	for i := 0; i < len(feeds); i++ {
@@ -81,14 +81,14 @@ func (f *Service[T]) GetFeedPositions(ctx context.Context, maxPositions int) ([]
 	positions := []model.FeedPosition{}
 	for i, j := 0, 0; i < maxPositions; i++ {
 		if j < len(usedPositions) {
-			if usedPositions[j].Position == int64(i) {
+			if usedPositions[j].Position == i {
 				positions = append(positions, usedPositions[j])
 				j++
 				continue
 			}
 		}
 		positions = append(positions, model.FeedPosition{
-			Position: int64(i),
+			Position: i,
 		})
 	}
 	return positions, nil

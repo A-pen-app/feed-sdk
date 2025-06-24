@@ -38,5 +38,5 @@ const (
 type FeedPosition struct {
 	FeedID   string   `json:"id" db:"feed_id"`
 	FeedType FeedType `json:"type" db:"feed_type"`
-	Position int64    `json:"position" db:"position"`
+	Position int      `json:"position" db:"position"`
 }
