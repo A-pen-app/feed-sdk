@@ -43,19 +43,36 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 		return nil, err
 	}
 
-	// make order maps, for later assign
+	// create a position map to speed up the discovery of positioned feeds.
 	positionMap := make(map[string]int64)
 	for _, position := range positions {
 		positionMap[position.FeedID] = position.Position
 	}
 
-	// assign orders to feeds
-	for i, feed := range feeds {
-		// the position of this feed is set
-		if j, exists := positionMap[feed.ID]; exists {
-			// swap the feed at i to its position at j
-			feeds[i], feeds[j] = feeds[j], feeds[i]
+	// create a position->feed map
+	positionedFeedMap := make(map[int64]model.Feed[T])
+	for i := 0; i < len(feeds); {
+		// if the feed is positioned, pull it out and put into map
+		if v, exists := positionMap[feeds[i].ID]; exists {
+			positionedFeedMap[v] = feeds[i]
+			feeds = append(feeds[:i], feeds[i+1:]...)
+			continue
 		}
+		i++
+	}
+
+	// insert positioned feeds into feeds
+	for _, p := range positions {
+		// get the feed from map
+		feed := positionedFeedMap[p.Position]
+		// insert the feed into feeds, since positions are in ascending order, later insertions will not affect the position of inserted ones.
+		feeds = append(
+			feeds[:p.Position],
+			append(
+				model.Feeds[T]{feed},
+				feeds[p.Position:]...,
+			)...,
+		)
 	}
 
 	return feeds, nil
