@@ -66,9 +66,8 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	feeds = nonPositionedFeeds
 
 	// insert positioned feeds into feeds
-	for _, p := range positions {
-		feed := positionedFeedMap[p.Position]
-		feeds = slices.Insert(feeds, int(p.Position), feed)
+	for k, v := range positionedFeedMap {
+		feeds = slices.Insert(feeds, k, v)
 	}
 	return feeds, nil
 }
