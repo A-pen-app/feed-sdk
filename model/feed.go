@@ -33,6 +33,7 @@ type FeedType string
 const (
 	TypePost    FeedType = "post"
 	TypeBanners FeedType = "banners"
+	TypeChat    FeedType = "chat"
 )
 
 type FeedPosition struct {
