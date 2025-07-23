@@ -67,7 +67,11 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 
 	for _, p := range positions {
 		if feed, exist := positionedFeedMap[p.Position]; exist {
-			feeds = slices.Insert(feeds, int(p.Position), feed)
+			if len(feeds) < p.Position {
+				feeds = append(feeds, feed)
+			} else {
+				feeds = slices.Insert(feeds, p.Position, feed)
+			}
 		}
 	}
 	return feeds, nil
