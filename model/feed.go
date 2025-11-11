@@ -2,6 +2,8 @@ package model
 
 import (
 	"sort"
+
+	"github.com/lib/pq"
 )
 
 type Feeds[T Scorable] []Feed[T]
@@ -37,8 +39,8 @@ const (
 )
 
 type Policy struct {
-	FeedID   string   `json:"id" db:"feed_id"`
-	FeedType FeedType `json:"type" db:"feed_type"`
-	Position int      `json:"position" db:"position"`
-	Policies []string `json:"policies" db:"policies"`
+	FeedID   string         `json:"id" db:"feed_id"`
+	FeedType FeedType       `json:"type" db:"feed_type"`
+	Position int            `json:"position" db:"position"`
+	Policies pq.StringArray `json:"policies" db:"policies"`
 }
