@@ -21,17 +21,18 @@ type store struct {
 	db *sqlx.DB
 }
 
-func (f *store) GetFeedPositions(ctx context.Context) ([]model.FeedPosition, error) {
+func (f *store) GetPolicies(ctx context.Context) ([]model.FeedPosition, error) {
 	orders := []model.FeedPosition{}
 
 	if err := f.db.Select(
 		&orders,
 		`
-		SELECT 
+		SELECT
 			feed.feed_id,
 			feed.feed_type,
-			feed.position
-		FROM 
+			feed.position,
+			feed.policy
+		FROM
 			feed
 		ORDER BY
 			feed.position ASC
