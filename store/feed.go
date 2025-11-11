@@ -31,7 +31,7 @@ func (f *store) GetPolicies(ctx context.Context) ([]model.Policy, error) {
 			feed.feed_id,
 			feed.feed_type,
 			feed.position,
-			feed.policy
+			feed.policies
 		FROM
 			feed
 		ORDER BY
