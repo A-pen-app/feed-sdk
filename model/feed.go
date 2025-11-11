@@ -40,5 +40,5 @@ type Policy struct {
 	FeedID   string   `json:"id" db:"feed_id"`
 	FeedType FeedType `json:"type" db:"feed_type"`
 	Position int      `json:"position" db:"position"`
-	Policy   []string `json:"policy" db:"policy"`
+	Policies []string `json:"policies" db:"policies"`
 }
