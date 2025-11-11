@@ -38,6 +38,12 @@ const (
 	TypeChat    FeedType = "chat"
 )
 
+type PolicyType string
+
+const (
+	Exposure PolicyType = "exposure"
+)
+
 type Policy struct {
 	FeedID   string         `json:"id" db:"feed_id"`
 	FeedType FeedType       `json:"type" db:"feed_type"`
