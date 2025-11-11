@@ -18,7 +18,7 @@ type Service[T model.Scorable] struct {
 }
 
 type store interface {
-	GetPolicies(ctx context.Context) ([]model.FeedPosition, error)
+	GetPolicies(ctx context.Context) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 }
@@ -77,12 +77,12 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	return feeds, nil
 }
 
-func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model.FeedPosition, error) {
+func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model.Policy, error) {
 	usedPositions, err := f.store.GetPolicies(ctx)
 	if err != nil {
 		return nil, err
 	}
-	positions := []model.FeedPosition{}
+	positions := []model.Policy{}
 	for i, j := 0, 0; i < maxPositions; i++ {
 		if j < len(usedPositions) {
 			if usedPositions[j].Position == i {
@@ -91,7 +91,7 @@ func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model
 				continue
 			}
 		}
-		positions = append(positions, model.FeedPosition{
+		positions = append(positions, model.Policy{
 			Position: i,
 		})
 	}

@@ -21,8 +21,8 @@ type store struct {
 	db *sqlx.DB
 }
 
-func (f *store) GetPolicies(ctx context.Context) ([]model.FeedPosition, error) {
-	orders := []model.FeedPosition{}
+func (f *store) GetPolicies(ctx context.Context) ([]model.Policy, error) {
+	orders := []model.Policy{}
 
 	if err := f.db.Select(
 		&orders,

@@ -36,7 +36,7 @@ const (
 	TypeChat    FeedType = "chat"
 )
 
-type FeedPosition struct {
+type Policy struct {
 	FeedID   string   `json:"id" db:"feed_id"`
 	FeedType FeedType `json:"type" db:"feed_type"`
 	Position int      `json:"position" db:"position"`
