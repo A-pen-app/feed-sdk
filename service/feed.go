@@ -116,11 +116,11 @@ type PolicyResolver interface {
 }
 
 // GetPostViewCount(ctx context.Context, postID string) (int64, error)
-func (f *Service[T]) CheckPolicies(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) (map[string]bool, error) {
+func (f *Service[T]) CheckPolicies(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) (map[string]string, error) {
 	if resolver == nil {
 		return nil, errors.New("resolver cannot be nil")
 	}
-	var violationMap map[string]bool = make(map[string]bool)
+	var violation map[string]string = make(map[string]string)
 
 postmap:
 	for postID, policy := range policyMap {
@@ -141,12 +141,12 @@ postmap:
 						continue
 					}
 					if totalview > policySetting {
-						violationMap[postID] = true
+						violation[postID] = pol
 						continue postmap
 					}
 				case model.Inexpose:
 					if time.Now().Unix() > policySetting {
-						violationMap[postID] = true
+						violation[postID] = pol
 						continue postmap
 					}
 				default:
@@ -157,5 +157,5 @@ postmap:
 			}
 		}
 	}
-	return violationMap, nil
+	return violation, nil
 }
