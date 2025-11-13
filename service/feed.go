@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -116,46 +115,49 @@ type PolicyResolver interface {
 }
 
 // GetPostViewCount(ctx context.Context, postID string) (int64, error)
-func (f *Service[T]) CheckPolicies(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) (map[string]string, error) {
-	if resolver == nil {
-		return nil, errors.New("resolver cannot be nil")
-	}
+func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) map[string]string {
 	var violation map[string]string = make(map[string]string)
-
-postmap:
 	for postID, policy := range policyMap {
-		for _, pol := range policy.Policies {
-			// whenever there is a violation to policy attribute, the post is removed from the feed
-			if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
-				policyName, rawsetting := parsed[0], parsed[1]
-				policySetting, err := strconv.ParseInt(rawsetting, 10, 64)
-				if err != nil {
-					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "post_id", postID, "policy", pol, "policy_setting", policySetting)
+		f.checkPolicyViolation(ctx, &violation, postID, policy.Policies, resolver)
+	}
+	return violation
+}
+
+func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[string]string, postID string, policies []string, resolver PolicyResolver) {
+	for _, pol := range policies {
+		// whenever there is a violation to policy attribute, the post is removed from the feed
+		if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
+			policyName, rawsetting := parsed[0], parsed[1]
+			policySetting, err := strconv.ParseInt(rawsetting, 10, 64)
+			if err != nil {
+				logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "post_id", postID, "policy", pol, "policy_setting", policySetting)
+				continue
+			}
+			switch model.PolicyType(policyName) {
+			case model.Exposure:
+				if resolver == nil {
+					logging.Error(ctx, "resolver cannot be nil, the policy will not take effect", "post_id", postID, "policy", pol)
 					continue
 				}
-				switch model.PolicyType(policyName) {
-				case model.Exposure:
-					totalview, err := resolver.GetPostViewCount(ctx, postID)
-					if err != nil {
-						logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "post_id", postID, "policy", pol)
-						continue
-					}
-					if totalview > policySetting {
-						violation[postID] = pol
-						continue postmap
-					}
-				case model.Inexpose:
-					if time.Now().Unix() > policySetting {
-						violation[postID] = pol
-						continue postmap
-					}
-				default:
-					logging.Error(ctx, "unknown policy, the policy will not take effect", "post_id", postID, "policy", pol)
+				totalview, err := resolver.GetPostViewCount(ctx, postID)
+				if err != nil {
+					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "post_id", postID, "policy", pol)
+					continue
 				}
-			} else {
-				logging.Error(ctx, "failed parsing policy, the policy will not take effect", "post_id", postID, "policy", pol)
+				if totalview > policySetting {
+					(*violation)[postID] = pol
+					return
+				}
+			case model.Inexpose:
+				if time.Now().Unix() > policySetting {
+					(*violation)[postID] = pol
+					return
+				}
+			default:
+				logging.Error(ctx, "unknown policy, the policy will not take effect", "post_id", postID, "policy", pol)
 			}
+		} else {
+			logging.Error(ctx, "failed parsing policy, the policy will not take effect", "post_id", postID, "policy", pol)
 		}
 	}
-	return violation, nil
 }
