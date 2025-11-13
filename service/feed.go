@@ -2,9 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/A-pen-app/feed-sdk/model"
+	"github.com/A-pen-app/logging"
 )
 
 func NewFeed[T model.Scorable](s store) *Service[T] {
@@ -104,4 +109,53 @@ func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.Fe
 
 func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 	return s.store.DeleteFeed(ctx, id)
+}
+
+type PolicyResolver interface {
+	GetPostViewCount(ctx context.Context, postID string) (int64, error)
+}
+
+// GetPostViewCount(ctx context.Context, postID string) (int64, error)
+func (f *Service[T]) CheckPolicies(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) (map[string]bool, error) {
+	if resolver == nil {
+		return nil, errors.New("resolver cannot be nil")
+	}
+	var violationMap map[string]bool = make(map[string]bool)
+
+postmap:
+	for postID, policy := range policyMap {
+		for _, pol := range policy.Policies {
+			// whenever there is a violation to policy attribute, the post is removed from the feed
+			if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
+				policyName, rawsetting := parsed[0], parsed[1]
+				policySetting, err := strconv.ParseInt(rawsetting, 10, 64)
+				if err != nil {
+					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "post_id", postID, "policy", pol, "policy_setting", policySetting)
+					continue
+				}
+				switch model.PolicyType(policyName) {
+				case model.Exposure:
+					totalview, err := resolver.GetPostViewCount(ctx, postID)
+					if err != nil {
+						logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "post_id", postID, "policy", pol)
+						continue
+					}
+					if totalview > policySetting {
+						violationMap[postID] = true
+						continue postmap
+					}
+				case model.Inexpose:
+					if time.Now().Unix() > policySetting {
+						violationMap[postID] = true
+						continue postmap
+					}
+				default:
+					logging.Error(ctx, "unknown policy, the policy will not take effect", "post_id", postID, "policy", pol)
+				}
+			} else {
+				logging.Error(ctx, "failed parsing policy, the policy will not take effect", "post_id", postID, "policy", pol)
+			}
+		}
+	}
+	return violationMap, nil
 }
