@@ -42,6 +42,7 @@ type PolicyType string
 
 const (
 	Exposure PolicyType = "exposure"
+	Inexpose PolicyType = "inexpose"
 )
 
 type Policy struct {
