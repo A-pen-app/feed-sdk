@@ -148,7 +148,12 @@ func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[st
 					(*violation)[postID] = pol
 					return
 				}
-			case model.Inexpose:
+			case model.Inexpose: // the time when the feed should start having exposure
+				if time.Now().Unix() < policySetting {
+					(*violation)[postID] = pol
+					return
+				}
+			case model.Unexpose: // the time when the feed should stop having exposure
 				if time.Now().Unix() > policySetting {
 					(*violation)[postID] = pol
 					return
