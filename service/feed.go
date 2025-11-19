@@ -123,46 +123,47 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, policyMap map[
 	return violation
 }
 
-func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[string]string, postID string, policies []string, resolver PolicyResolver) {
+func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[string]string, feedID string, policies []string, resolver PolicyResolver) {
 	for _, pol := range policies {
 		// whenever there is a violation to policy attribute, the post is removed from the feed
 		if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
 			policyName, rawsetting := parsed[0], parsed[1]
 			policySetting, err := strconv.ParseInt(rawsetting, 10, 64)
 			if err != nil {
-				logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "post_id", postID, "policy", pol, "policy_setting", policySetting)
+				logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "policy_setting", policySetting)
 				continue
 			}
+			logging.Debug(ctx, "examine violation of policy", "feed_id", feedID, "policy", policyName, "setting", policySetting)
 			switch model.PolicyType(policyName) {
 			case model.Exposure:
 				if resolver == nil {
-					logging.Error(ctx, "resolver cannot be nil, the policy will not take effect", "post_id", postID, "policy", pol)
+					logging.Error(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedID, "policy", pol)
 					continue
 				}
-				totalview, err := resolver.GetPostViewCount(ctx, postID)
+				totalview, err := resolver.GetPostViewCount(ctx, feedID)
 				if err != nil {
-					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "post_id", postID, "policy", pol)
+					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedID, "policy", pol)
 					continue
 				}
 				if totalview > policySetting {
-					(*violation)[postID] = pol
+					(*violation)[feedID] = pol
 					return
 				}
 			case model.Inexpose: // the time when the feed should start having exposure
 				if time.Now().Unix() < policySetting {
-					(*violation)[postID] = pol
+					(*violation)[feedID] = pol
 					return
 				}
 			case model.Unexpose: // the time when the feed should stop having exposure
 				if time.Now().Unix() > policySetting {
-					(*violation)[postID] = pol
+					(*violation)[feedID] = pol
 					return
 				}
 			default:
-				logging.Error(ctx, "unknown policy, the policy will not take effect", "post_id", postID, "policy", pol)
+				logging.Error(ctx, "unknown policy, the policy will not take effect", "feed_id", feedID, "policy", pol)
 			}
 		} else {
-			logging.Error(ctx, "failed parsing policy, the policy will not take effect", "post_id", postID, "policy", pol)
+			logging.Error(ctx, "failed parsing policy, the policy will not take effect", "feed_id", feedID, "policy", pol)
 		}
 	}
 }
