@@ -125,6 +125,7 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, policyMap map[
 
 func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[string]string, feedID string, policies []string, resolver PolicyResolver) {
 	for _, pol := range policies {
+		logging.Debug(ctx, "examine violation of policies", "feed_id", feedID, "policies_len", len(policies))
 		// whenever there is a violation to policy attribute, the post is removed from the feed
 		if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
 			policyName, rawsetting := parsed[0], parsed[1]
