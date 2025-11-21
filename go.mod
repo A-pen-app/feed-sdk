@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/A-pen-app/logging v0.4.0
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/lib/pq v1.2.0
 )
