@@ -214,9 +214,9 @@ func TestGetPolicies(t *testing.T) {
 		validateResult func(t *testing.T, policies []model.Policy)
 	}{
 		{
-			name:         "generate policies with no used positions",
-			maxPositions: 5,
-			usedPolicies: []model.Policy{},
+			name:          "generate policies with no used positions",
+			maxPositions:  5,
+			usedPolicies:  []model.Policy{},
 			expectedCount: 5,
 			validateResult: func(t *testing.T, policies []model.Policy) {
 				for i := 0; i < 5; i++ {
@@ -476,7 +476,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 					Policies: pq.StringArray{"inexpose-1000000000"}, // Old timestamp
 				},
 			},
-			resolver: &mockPolicyResolver{},
+			resolver:           &mockPolicyResolver{},
 			expectedViolations: map[string]string{},
 		},
 		{
@@ -500,7 +500,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 					Policies: pq.StringArray{"unexpose-9999999999"}, // Far future
 				},
 			},
-			resolver: &mockPolicyResolver{},
+			resolver:           &mockPolicyResolver{},
 			expectedViolations: map[string]string{},
 		},
 		{

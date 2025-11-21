@@ -31,7 +31,7 @@ func TestNewFeed(t *testing.T) {
 		store := NewFeed(sqlxDB)
 
 		if store == nil {
-			t.Error("expected store to be created, got nil")
+			t.Fatal("expected store to be created, got nil")
 		}
 		if store.db == nil {
 			t.Error("expected store.db to be set, got nil")
@@ -80,8 +80,8 @@ func TestGetPolicies(t *testing.T) {
 			},
 		},
 		{
-			name: "empty result set",
-			mockRows: sqlmock.NewRows([]string{"feed_id", "feed_type", "position", "policies"}),
+			name:          "empty result set",
+			mockRows:      sqlmock.NewRows([]string{"feed_id", "feed_type", "position", "policies"}),
 			expectedCount: 0,
 		},
 		{
