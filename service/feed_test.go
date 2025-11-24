@@ -66,10 +66,10 @@ func (m *mockStore) DeleteFeed(ctx context.Context, id string) error {
 
 // Mock policy resolver
 type mockPolicyResolver struct {
-	viewCounts    map[string]int64
-	userAttrs     map[string][]string
-	err           error
-	userAttrsErr  error
+	viewCounts   map[string]int64
+	userAttrs    map[string][]string
+	err          error
+	userAttrsErr error
 }
 
 func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string) (int64, error) {

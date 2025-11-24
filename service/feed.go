@@ -173,17 +173,15 @@ func (f *Service[T]) checkPolicyViolation(ctx context.Context, userID string, vi
 				}
 			case model.Istarget: // the target attribute which the feed should have a match
 				if userAttrs, err := resolver.GetUserAttribute(ctx, userID); err != nil {
-					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedID, "policy", pol)
+					logging.Error(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedID, "policy", pol)
 					continue
 				} else {
-					for _, attr := range userAttrs {
-						if attr == rawParam {
-							continue // the feed is the target post for the given user_id, policy not violated, continue to next policy
-						}
+					if !slices.Contains(userAttrs, rawParam) {
+						// no attribute matches the given target attribute, the policy is violated
+						(*violation)[feedID] = pol
+						return
 					}
-					// no attribute matches the given target attribute, the policy is violated
-					(*violation)[feedID] = pol
-					return
+					// matched - no violation, continue to next policy
 				}
 			default:
 				logging.Error(ctx, "unknown policy, the policy will not take effect", "feed_id", feedID, "policy", pol)
