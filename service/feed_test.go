@@ -66,8 +66,10 @@ func (m *mockStore) DeleteFeed(ctx context.Context, id string) error {
 
 // Mock policy resolver
 type mockPolicyResolver struct {
-	viewCounts map[string]int64
-	err        error
+	viewCounts    map[string]int64
+	userAttrs     map[string][]string
+	err           error
+	userAttrsErr  error
 }
 
 func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string) (int64, error) {
@@ -78,6 +80,16 @@ func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string
 		return count, nil
 	}
 	return 0, nil
+}
+
+func (m *mockPolicyResolver) GetUserAttribute(ctx context.Context, userID string) ([]string, error) {
+	if m.userAttrsErr != nil {
+		return nil, m.userAttrsErr
+	}
+	if attrs, exists := m.userAttrs[userID]; exists {
+		return attrs, nil
+	}
+	return []string{}, nil
 }
 
 func TestGetFeeds(t *testing.T) {
@@ -554,7 +566,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			mockStore := &mockStore{}
 			svc := NewFeed[MockPost](mockStore)
 
-			violations := svc.BuildPolicyViolationMap(ctx, tt.policyMap, tt.resolver)
+			violations := svc.BuildPolicyViolationMap(ctx, "test-user", tt.policyMap, tt.resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
 				t.Fatalf("expected %d violations, got %d", len(tt.expectedViolations), len(violations))
@@ -642,7 +654,7 @@ func TestCheckPolicyViolation(t *testing.T) {
 			svc := NewFeed[MockPost](mockStore)
 
 			violation := make(map[string]string)
-			svc.checkPolicyViolation(ctx, &violation, tt.feedID, tt.policies, tt.resolver)
+			svc.checkPolicyViolation(ctx, "test-user", &violation, tt.feedID, tt.policies, tt.resolver)
 
 			if tt.expectedViolation {
 				if _, exists := violation[tt.feedID]; !exists {
