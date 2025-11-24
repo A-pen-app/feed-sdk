@@ -44,6 +44,7 @@ const (
 	Exposure PolicyType = "exposure"
 	Inexpose PolicyType = "inexpose"
 	Unexpose PolicyType = "unexpose"
+	Istarget PolicyType = "istarget"
 )
 
 type Policy struct {

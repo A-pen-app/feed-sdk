@@ -112,31 +112,32 @@ func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 
 type PolicyResolver interface {
 	GetPostViewCount(ctx context.Context, postID string) (int64, error)
+	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
 // GetPostViewCount(ctx context.Context, postID string) (int64, error)
-func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, policyMap map[string]*model.Policy, resolver PolicyResolver) map[string]string {
+func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver PolicyResolver) map[string]string {
 	var violation map[string]string = make(map[string]string)
 	for postID, policy := range policyMap {
-		f.checkPolicyViolation(ctx, &violation, postID, policy.Policies, resolver)
+		f.checkPolicyViolation(ctx, userID, &violation, postID, policy.Policies, resolver)
 	}
 	return violation
 }
 
-func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[string]string, feedID string, policies []string, resolver PolicyResolver) {
+func (f *Service[T]) checkPolicyViolation(ctx context.Context, userID string, violation *map[string]string, feedID string, policies []string, resolver PolicyResolver) {
 	for _, pol := range policies {
 		logging.Debug(ctx, "examine violation of policies", "feed_id", feedID, "policies_len", len(policies))
 		// whenever there is a violation to policy attribute, the post is removed from the feed
 		if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
-			policyName, rawsetting := parsed[0], parsed[1]
-			policySetting, err := strconv.ParseInt(rawsetting, 10, 64)
-			if err != nil {
-				logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "policy_setting", policySetting)
-				continue
-			}
-			logging.Debug(ctx, "examine violation of policy", "feed_id", feedID, "policy", policyName, "setting", policySetting)
+			policyName, rawParam := parsed[0], parsed[1]
+			logging.Debug(ctx, "examine violation of policy", "feed_id", feedID, "policy", policyName, "param", rawParam)
 			switch model.PolicyType(policyName) {
 			case model.Exposure:
+				exposureLimit, err := strconv.ParseInt(rawParam, 10, 64)
+				if err != nil {
+					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
+					continue
+				}
 				if resolver == nil {
 					logging.Error(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedID, "policy", pol)
 					continue
@@ -146,17 +147,41 @@ func (f *Service[T]) checkPolicyViolation(ctx context.Context, violation *map[st
 					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedID, "policy", pol)
 					continue
 				}
-				if totalview > policySetting {
+				if totalview > exposureLimit {
 					(*violation)[feedID] = pol
 					return
 				}
 			case model.Inexpose: // the time when the feed should start having exposure
-				if time.Now().Unix() < policySetting {
+				inexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
+				if err != nil {
+					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
+					continue
+				}
+				if time.Now().Unix() < inexposeTime {
 					(*violation)[feedID] = pol
 					return
 				}
 			case model.Unexpose: // the time when the feed should stop having exposure
-				if time.Now().Unix() > policySetting {
+				unexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
+				if err != nil {
+					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
+					continue
+				}
+				if time.Now().Unix() > unexposeTime {
+					(*violation)[feedID] = pol
+					return
+				}
+			case model.Istarget: // the target attribute which the feed should have a match
+				if userAttrs, err := resolver.GetUserAttribute(ctx, userID); err != nil {
+					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedID, "policy", pol)
+					continue
+				} else {
+					for _, attr := range userAttrs {
+						if attr == rawParam {
+							continue // the feed is the target post for the given user_id, policy not violated, continue to next policy
+						}
+					}
+					// no attribute matches the given target attribute, the policy is violated
 					(*violation)[feedID] = pol
 					return
 				}
