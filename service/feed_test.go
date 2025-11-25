@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -283,7 +285,7 @@ func TestGetPolicies(t *testing.T) {
 			expectedCount: 3,
 			validateResult: func(t *testing.T, policies []model.Policy) {
 				for i := 0; i < 3; i++ {
-					expectedID := "feed" + string(rune('1'+i))
+					expectedID := fmt.Sprintf("feed%d", i+1)
 					if policies[i].FeedID != expectedID {
 						t.Errorf("at position %d: expected %s, got %s", i, expectedID, policies[i].FeedID)
 					}
@@ -640,11 +642,12 @@ func TestCheckPolicyViolation(t *testing.T) {
 			expectedViolation: false,
 		},
 		{
-			name:     "inexpose - current time before threshold",
-			feedID:   "post1",
-			policies: []string{"inexpose-" + string(rune(now+10000))},
-			resolver: &mockPolicyResolver{},
-			// This test might be flaky with actual time, but demonstrates the logic
+			name:               "inexpose - current time before threshold",
+			feedID:             "post1",
+			policies:           []string{"inexpose-" + strconv.FormatInt(now+10000, 10)},
+			resolver:           &mockPolicyResolver{},
+			expectedViolation:  true,
+			expectedPolicyName: "inexpose-" + strconv.FormatInt(now+10000, 10),
 		},
 	}
 
@@ -695,7 +698,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				"user1": {"premium", "verified"},
 			},
 			expectedViolations: map[string]string{},
-			description:         "Post should be visible when user has the target attribute",
+			description:        "Post should be visible when user has the target attribute",
 		},
 		{
 			name:   "user does not have matching target attribute",
@@ -786,7 +789,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				"user1": {"basic", "active", "verified", "subscribed", "member"},
 			},
 			expectedViolations: map[string]string{},
-			description:         "Post should be visible when target is found among many attributes",
+			description:        "Post should be visible when target is found among many attributes",
 		},
 		{
 			name:   "exact string match required",
@@ -818,7 +821,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				"user1": {"vip_2024", "active"},
 			},
 			expectedViolations: map[string]string{},
-			description:         "Target attributes with underscores should work",
+			description:        "Target attributes with underscores should work",
 		},
 		{
 			name:   "attribute with dash gets truncated",
@@ -833,7 +836,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				"user1": {"vip", "2024"},
 			},
 			expectedViolations: map[string]string{},
-			description:         "Due to split on dash, 'istarget-vip-2024' only checks for 'vip'",
+			description:        "Due to split on dash, 'istarget-vip-2024' only checks for 'vip'",
 		},
 		{
 			name:   "user not in attributes map",
@@ -899,7 +902,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				"user1": {"premium", ""},
 			},
 			expectedViolations: map[string]string{},
-			description:         "Empty string target should match empty string in user attributes",
+			description:        "Empty string target should match empty string in user attributes",
 		},
 	}
 
@@ -949,7 +952,6 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 		policyMap          map[string]*model.Policy
 		resolver           PolicyResolver
 		expectedViolations map[string]string
-		shouldPanic        bool
 		description        string
 	}{
 		{
@@ -966,7 +968,7 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 				userAttrsErr: errors.New("database error"),
 			},
 			expectedViolations: map[string]string{},
-			description:         "Post should not be hidden when resolver returns error",
+			description:        "Post should not be hidden when resolver returns error",
 		},
 		{
 			name:   "multiple feeds with resolver error",
@@ -986,7 +988,7 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 				userAttrsErr: errors.New("service unavailable"),
 			},
 			expectedViolations: map[string]string{},
-			description:         "All istarget policies should be skipped when resolver errors",
+			description:        "All istarget policies should be skipped when resolver errors",
 		},
 	}
 
@@ -1098,8 +1100,8 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 					Policies: pq.StringArray{
 						"exposure-1000",
 						"istarget-premium",
-						"inexpose-" + string(rune('0'+now-3600)),
-						"unexpose-" + string(rune('0'+now+3600)),
+						"inexpose-" + strconv.FormatInt(now-3600, 10),
+						"unexpose-" + strconv.FormatInt(now+3600, 10),
 					},
 				},
 			},
@@ -1110,7 +1112,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": 500,
 			},
 			expectedViolations: map[string]string{},
-			description:         "Post should be visible when all policies pass",
+			description:        "Post should be visible when all policies pass",
 		},
 		{
 			name:   "time-based and istarget policies mixed",
@@ -1119,9 +1121,9 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": {
 					FeedID: "post1",
 					Policies: pq.StringArray{
-						"inexpose-" + string(rune('0'+now-3600)),
+						"inexpose-" + strconv.FormatInt(now-3600, 10),
 						"istarget-premium",
-						"unexpose-" + string(rune('0'+now+3600)),
+						"unexpose-" + strconv.FormatInt(now+3600, 10),
 					},
 				},
 			},
