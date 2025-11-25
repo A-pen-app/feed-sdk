@@ -670,3 +670,527 @@ func TestCheckPolicyViolation(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name               string
+		userID             string
+		policyMap          map[string]*model.Policy
+		userAttrs          map[string][]string
+		expectedViolations map[string]string
+		description        string
+	}{
+		{
+			name:   "user has matching target attribute",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium", "verified"},
+			},
+			expectedViolations: map[string]string{},
+			description:         "Post should be visible when user has the target attribute",
+		},
+		{
+			name:   "user does not have matching target attribute",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"basic", "verified"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Post should be hidden when user lacks the target attribute",
+		},
+		{
+			name:   "user has empty attributes list",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Post should be hidden when user has no attributes",
+		},
+		{
+			name:   "multiple posts with different target attributes",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+				"post2": {
+					FeedID:   "post2",
+					Policies: pq.StringArray{"istarget-verified"},
+				},
+				"post3": {
+					FeedID:   "post3",
+					Policies: pq.StringArray{"istarget-admin"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium", "verified"},
+			},
+			expectedViolations: map[string]string{
+				"post3": "istarget-admin",
+			},
+			description: "Only posts requiring missing attributes should be hidden",
+		},
+		{
+			name:   "case sensitive attribute matching",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-Premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-Premium",
+			},
+			description: "Attribute matching should be case-sensitive",
+		},
+		{
+			name:   "user with many attributes matches one target",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-verified"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"basic", "active", "verified", "subscribed", "member"},
+			},
+			expectedViolations: map[string]string{},
+			description:         "Post should be visible when target is found among many attributes",
+		},
+		{
+			name:   "exact string match required",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-prem"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-prem",
+			},
+			description: "Partial matches should not count - exact match required",
+		},
+		{
+			name:   "attribute with underscore",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-vip_2024"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"vip_2024", "active"},
+			},
+			expectedViolations: map[string]string{},
+			description:         "Target attributes with underscores should work",
+		},
+		{
+			name:   "attribute with dash gets truncated",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-vip-2024"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"vip", "2024"},
+			},
+			expectedViolations: map[string]string{},
+			description:         "Due to split on dash, 'istarget-vip-2024' only checks for 'vip'",
+		},
+		{
+			name:   "user not in attributes map",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user2": {"premium"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Post should be hidden when user not found in attributes map",
+		},
+		{
+			name:   "multiple istarget policies - all must match",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium", "istarget-verified"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-verified",
+			},
+			description: "First violation should be returned when multiple istarget policies exist",
+		},
+		{
+			name:   "istarget with other policies - istarget checked in order",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"basic"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Istarget policy should be evaluated after exposure if exposure passes",
+		},
+		{
+			name:   "empty target attribute parameter",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium", ""},
+			},
+			expectedViolations: map[string]string{},
+			description:         "Empty string target should match empty string in user attributes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &mockPolicyResolver{
+				userAttrs:    tt.userAttrs,
+				viewCounts:   map[string]int64{},
+				userAttrsErr: nil,
+			}
+
+			service := NewFeed[MockPost](&mockStore{})
+			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
+
+			if len(violations) != len(tt.expectedViolations) {
+				t.Errorf("%s: expected %d violations, got %d\nExpected: %v\nGot: %v",
+					tt.description, len(tt.expectedViolations), len(violations),
+					tt.expectedViolations, violations)
+			}
+
+			for postID, expectedPolicy := range tt.expectedViolations {
+				if actualPolicy, exists := violations[postID]; !exists {
+					t.Errorf("%s: expected violation for post %s with policy %s, but not found",
+						tt.description, postID, expectedPolicy)
+				} else if actualPolicy != expectedPolicy {
+					t.Errorf("%s: expected policy %s for post %s, got %s",
+						tt.description, expectedPolicy, postID, actualPolicy)
+				}
+			}
+
+			for postID := range violations {
+				if _, expected := tt.expectedViolations[postID]; !expected {
+					t.Errorf("%s: unexpected violation for post %s: %s",
+						tt.description, postID, violations[postID])
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name               string
+		userID             string
+		policyMap          map[string]*model.Policy
+		resolver           PolicyResolver
+		expectedViolations map[string]string
+		shouldPanic        bool
+		description        string
+	}{
+		{
+			name:   "resolver returns error for user attributes",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+			},
+			resolver: &mockPolicyResolver{
+				userAttrs:    map[string][]string{},
+				userAttrsErr: errors.New("database error"),
+			},
+			expectedViolations: map[string]string{},
+			description:         "Post should not be hidden when resolver returns error",
+		},
+		{
+			name:   "multiple feeds with resolver error",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+				"post2": {
+					FeedID:   "post2",
+					Policies: pq.StringArray{"istarget-verified"},
+				},
+			},
+			resolver: &mockPolicyResolver{
+				userAttrs:    map[string][]string{},
+				userAttrsErr: errors.New("service unavailable"),
+			},
+			expectedViolations: map[string]string{},
+			description:         "All istarget policies should be skipped when resolver errors",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewFeed[MockPost](&mockStore{})
+			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, tt.resolver)
+
+			if len(violations) != len(tt.expectedViolations) {
+				t.Errorf("%s: expected %d violations, got %d", tt.description, len(tt.expectedViolations), len(violations))
+			}
+
+			for postID, expectedPolicy := range tt.expectedViolations {
+				if actualPolicy, exists := violations[postID]; !exists {
+					t.Errorf("%s: expected violation for post %s with policy %s, but not found",
+						tt.description, postID, expectedPolicy)
+				} else if actualPolicy != expectedPolicy {
+					t.Errorf("%s: expected policy %s for post %s, got %s",
+						tt.description, expectedPolicy, postID, actualPolicy)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
+	ctx := context.Background()
+
+	// Test that nil resolver causes panic for istarget policy
+	// This documents the current behavior - the code should ideally check for nil
+	t.Run("nil resolver causes panic", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic with nil resolver for istarget policy, but no panic occurred")
+			}
+		}()
+
+		policyMap := map[string]*model.Policy{
+			"post1": {
+				FeedID:   "post1",
+				Policies: pq.StringArray{"istarget-premium"},
+			},
+		}
+
+		service := NewFeed[MockPost](&mockStore{})
+		_ = service.BuildPolicyViolationMap(ctx, "user1", policyMap, nil)
+	})
+}
+
+func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Unix()
+
+	tests := []struct {
+		name               string
+		userID             string
+		policyMap          map[string]*model.Policy
+		userAttrs          map[string][]string
+		viewCounts         map[string]int64
+		expectedViolations map[string]string
+		description        string
+	}{
+		{
+			name:   "exposure passes but istarget fails",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"basic"},
+			},
+			viewCounts: map[string]int64{
+				"post1": 500,
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Should fail on istarget when exposure passes",
+		},
+		{
+			name:   "exposure fails before istarget check",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium"},
+			},
+			viewCounts: map[string]int64{
+				"post1": 1500,
+			},
+			expectedViolations: map[string]string{
+				"post1": "exposure-1000",
+			},
+			description: "Should fail on exposure and not check istarget",
+		},
+		{
+			name:   "all policies pass including istarget",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID: "post1",
+					Policies: pq.StringArray{
+						"exposure-1000",
+						"istarget-premium",
+						"inexpose-" + string(rune('0'+now-3600)),
+						"unexpose-" + string(rune('0'+now+3600)),
+					},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium", "verified"},
+			},
+			viewCounts: map[string]int64{
+				"post1": 500,
+			},
+			expectedViolations: map[string]string{},
+			description:         "Post should be visible when all policies pass",
+		},
+		{
+			name:   "time-based and istarget policies mixed",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID: "post1",
+					Policies: pq.StringArray{
+						"inexpose-" + string(rune('0'+now-3600)),
+						"istarget-premium",
+						"unexpose-" + string(rune('0'+now+3600)),
+					},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"basic"},
+			},
+			viewCounts: map[string]int64{},
+			expectedViolations: map[string]string{
+				"post1": "istarget-premium",
+			},
+			description: "Should evaluate istarget between time-based policies",
+		},
+		{
+			name:   "multiple posts with different policy combinations",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedID:   "post1",
+					Policies: pq.StringArray{"istarget-premium"},
+				},
+				"post2": {
+					FeedID:   "post2",
+					Policies: pq.StringArray{"exposure-1000"},
+				},
+				"post3": {
+					FeedID:   "post3",
+					Policies: pq.StringArray{"istarget-verified", "exposure-500"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"premium", "basic"},
+			},
+			viewCounts: map[string]int64{
+				"post2": 1500,
+				"post3": 300,
+			},
+			expectedViolations: map[string]string{
+				"post2": "exposure-1000",
+				"post3": "istarget-verified",
+			},
+			description: "Each post should be evaluated independently",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &mockPolicyResolver{
+				userAttrs:  tt.userAttrs,
+				viewCounts: tt.viewCounts,
+			}
+
+			service := NewFeed[MockPost](&mockStore{})
+			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
+
+			if len(violations) != len(tt.expectedViolations) {
+				t.Errorf("%s: expected %d violations, got %d\nExpected: %v\nGot: %v",
+					tt.description, len(tt.expectedViolations), len(violations),
+					tt.expectedViolations, violations)
+			}
+
+			for postID, expectedPolicy := range tt.expectedViolations {
+				if actualPolicy, exists := violations[postID]; !exists {
+					t.Errorf("%s: expected violation for post %s with policy %s, but not found",
+						tt.description, postID, expectedPolicy)
+				} else if actualPolicy != expectedPolicy {
+					t.Errorf("%s: expected policy %s for post %s, got %s",
+						tt.description, expectedPolicy, postID, actualPolicy)
+				}
+			}
+		})
+	}
+}
