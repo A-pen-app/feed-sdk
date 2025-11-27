@@ -174,14 +174,14 @@ func TestPolicyTypeConstants(t *testing.T) {
 
 func TestPolicyStruct(t *testing.T) {
 	policy := Policy{
-		FeedID:   "feed123",
+		FeedId:   "feed123",
 		FeedType: TypePost,
 		Position: 5,
 		Policies: pq.StringArray{"exposure-1000", "inexpose-1234567890"},
 	}
 
-	if policy.FeedID != "feed123" {
-		t.Errorf("expected FeedID 'feed123', got '%s'", policy.FeedID)
+	if policy.FeedId != "feed123" {
+		t.Errorf("expected FeedId 'feed123', got '%s'", policy.FeedId)
 	}
 	if policy.FeedType != TypePost {
 		t.Errorf("expected FeedType 'post', got '%s'", policy.FeedType)

@@ -3,12 +3,8 @@ package service
 import (
 	"context"
 	"slices"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/A-pen-app/feed-sdk/model"
-	"github.com/A-pen-app/logging"
 )
 
 func NewFeed[T model.Scorable](s store) *Service[T] {
@@ -51,7 +47,7 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	// create a position map to speed up the discovery of positioned feeds.
 	positionMap := make(map[string]int)
 	for _, position := range positions {
-		positionMap[position.FeedID] = position.Position
+		positionMap[position.FeedId] = position.Position
 	}
 
 	// create a position->feed map
@@ -110,84 +106,20 @@ func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 	return s.store.DeleteFeed(ctx, id)
 }
 
-type PolicyResolver interface {
-	GetPostViewCount(ctx context.Context, postID string) (int64, error)
-	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
-}
-
 // GetPostViewCount(ctx context.Context, postID string) (int64, error)
-func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver PolicyResolver) map[string]string {
+func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
 	var violation map[string]string = make(map[string]string)
 	for postID, policy := range policyMap {
-		f.checkPolicyViolation(ctx, userID, &violation, postID, policy.Policies, resolver)
+		f.checkPolicyViolation(ctx, userID, postID, &violation, policy.Policies, resolver)
 	}
 	return violation
 }
 
-func (f *Service[T]) checkPolicyViolation(ctx context.Context, userID string, violation *map[string]string, feedID string, policies []string, resolver PolicyResolver) {
+func (f *Service[T]) checkPolicyViolation(ctx context.Context, userId, feedId string, violation *map[string]string, policies []string, resolver model.PolicyResolver) {
 	for _, pol := range policies {
-		logging.Debug(ctx, "examine violation of policies", "feed_id", feedID, "policies_len", len(policies))
-		// whenever there is a violation to policy attribute, the post is removed from the feed
-		if parsed := strings.Split(pol, "-"); len(parsed) > 1 {
-			policyName, rawParam := parsed[0], parsed[1]
-			logging.Debug(ctx, "examine violation of policy", "feed_id", feedID, "policy", policyName, "param", rawParam)
-			switch model.PolicyType(policyName) {
-			case model.Exposure:
-				exposureLimit, err := strconv.ParseInt(rawParam, 10, 64)
-				if err != nil {
-					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
-					continue
-				}
-				if resolver == nil {
-					logging.Error(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedID, "policy", pol)
-					continue
-				}
-				totalview, err := resolver.GetPostViewCount(ctx, feedID)
-				if err != nil {
-					logging.Error(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedID, "policy", pol)
-					continue
-				}
-				if totalview > exposureLimit {
-					(*violation)[feedID] = pol
-					return
-				}
-			case model.Inexpose: // the time when the feed should start having exposure
-				inexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
-				if err != nil {
-					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
-					continue
-				}
-				if time.Now().Unix() < inexposeTime {
-					(*violation)[feedID] = pol
-					return
-				}
-			case model.Unexpose: // the time when the feed should stop having exposure
-				unexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
-				if err != nil {
-					logging.Error(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedID, "policy", pol, "param", rawParam)
-					continue
-				}
-				if time.Now().Unix() > unexposeTime {
-					(*violation)[feedID] = pol
-					return
-				}
-			case model.Istarget: // the target attribute which the feed should have a match
-				if userAttrs, err := resolver.GetUserAttribute(ctx, userID); err != nil {
-					logging.Error(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedID, "policy", pol)
-					continue
-				} else {
-					if !slices.Contains(userAttrs, rawParam) {
-						// no attribute matches the given target attribute, the policy is violated
-						(*violation)[feedID] = pol
-						return
-					}
-					// matched - no violation, continue to next policy
-				}
-			default:
-				logging.Error(ctx, "unknown policy, the policy will not take effect", "feed_id", feedID, "policy", pol)
-			}
-		} else {
-			logging.Error(ctx, "failed parsing policy, the policy will not take effect", "feed_id", feedID, "policy", pol)
+		if model.PolicyType(pol).Violated(ctx, userId, feedId, resolver) {
+			(*violation)[feedId] = pol
+			return
 		}
 	}
 }

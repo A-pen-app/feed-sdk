@@ -58,8 +58,8 @@ func TestGetPolicies(t *testing.T) {
 				AddRow("feed3", "chat", 2, pq.StringArray{"exposure-500"}),
 			expectedCount: 3,
 			validateResult: func(t *testing.T, policies []model.Policy) {
-				if policies[0].FeedID != "feed1" {
-					t.Errorf("expected first feed ID 'feed1', got '%s'", policies[0].FeedID)
+				if policies[0].FeedId != "feed1" {
+					t.Errorf("expected first feed ID 'feed1', got '%s'", policies[0].FeedId)
 				}
 				if policies[0].FeedType != model.TypePost {
 					t.Errorf("expected first feed type 'post', got '%s'", policies[0].FeedType)
@@ -71,8 +71,8 @@ func TestGetPolicies(t *testing.T) {
 					t.Errorf("expected 1 policy for feed1, got %d", len(policies[0].Policies))
 				}
 
-				if policies[1].FeedID != "feed2" {
-					t.Errorf("expected second feed ID 'feed2', got '%s'", policies[1].FeedID)
+				if policies[1].FeedId != "feed2" {
+					t.Errorf("expected second feed ID 'feed2', got '%s'", policies[1].FeedId)
 				}
 				if len(policies[1].Policies) != 2 {
 					t.Errorf("expected 2 policies for feed2, got %d", len(policies[1].Policies))
