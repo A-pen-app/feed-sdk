@@ -106,7 +106,6 @@ func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 	return s.store.DeleteFeed(ctx, id)
 }
 
-// GetPostViewCount(ctx context.Context, postID string) (int64, error)
 func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
 	var violation map[string]string = make(map[string]string)
 	for postID, policy := range policyMap {

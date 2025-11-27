@@ -1,10 +1,65 @@
 package model
 
 import (
+	"context"
+	"errors"
+	"os"
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/A-pen-app/logging"
 	"github.com/lib/pq"
 )
+
+func TestMain(m *testing.M) {
+	// Initialize logging for tests to prevent nil pointer panics
+	_ = logging.Initialize(&logging.Config{
+		ProjectID:   "test",
+		Development: true,
+	})
+	defer logging.Finalize()
+	os.Exit(m.Run())
+}
+
+// Mock implementation of PolicyResolver for testing
+type mockPolicyResolver struct {
+	viewCounts       map[string]int64
+	uniqueViewCounts map[string]int64
+	userAttrs        map[string][]string
+	err              error
+	userAttrsErr     error
+}
+
+func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string) (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	if count, exists := m.viewCounts[postID]; exists {
+		return count, nil
+	}
+	return 0, nil
+}
+
+func (m *mockPolicyResolver) GetPostUniqueUserViewCount(ctx context.Context, postID string) (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	if count, exists := m.uniqueViewCounts[postID]; exists {
+		return count, nil
+	}
+	return 0, nil
+}
+
+func (m *mockPolicyResolver) GetUserAttribute(ctx context.Context, userID string) ([]string, error) {
+	if m.userAttrsErr != nil {
+		return nil, m.userAttrsErr
+	}
+	if attrs, exists := m.userAttrs[userID]; exists {
+		return attrs, nil
+	}
+	return []string{}, nil
+}
 
 // Mock implementation of Scorable for testing
 type MockPost struct {
@@ -218,5 +273,202 @@ func TestFeedStruct(t *testing.T) {
 	}
 	if feed.Data.Score() != 100.0 {
 		t.Errorf("expected Data Score 100.0, got %f", feed.Data.Score())
+	}
+}
+
+func TestPolicyTypeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		policy   PolicyType
+		expected string
+	}{
+		{"exposure", Exposure, "exposure"},
+		{"inexpose", Inexpose, "inexpose"},
+		{"unexpose", Unexpose, "unexpose"},
+		{"istarget", Istarget, "istarget"},
+		{"distinct", Distinct, "distinct"},
+		{"interval", Inverval, "interval"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.policy.String() != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, tt.policy.String())
+			}
+		})
+	}
+}
+
+func TestPolicyTypeViolated(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Unix()
+
+	tests := []struct {
+		name             string
+		policy           PolicyType
+		userId           string
+		feedId           string
+		resolver         PolicyResolver
+		expectedViolated bool
+	}{
+		{
+			name:             "invalid policy format - no dash",
+			policy:           PolicyType("invalid"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "exposure - under limit",
+			policy:           PolicyType("exposure-1000"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{viewCounts: map[string]int64{"post1": 500}},
+			expectedViolated: false,
+		},
+		{
+			name:             "exposure - over limit (violation)",
+			policy:           PolicyType("exposure-1000"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{viewCounts: map[string]int64{"post1": 1500}},
+			expectedViolated: true,
+		},
+		{
+			name:             "exposure - invalid number",
+			policy:           PolicyType("exposure-abc"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "exposure - nil resolver",
+			policy:           PolicyType("exposure-1000"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         nil,
+			expectedViolated: false,
+		},
+		{
+			name:             "exposure - resolver error",
+			policy:           PolicyType("exposure-1000"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{err: errors.New("db error")},
+			expectedViolated: false,
+		},
+		{
+			name:             "inexpose - before start time (violation)",
+			policy:           PolicyType("inexpose-" + strconv.FormatInt(now+10000, 10)),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: true,
+		},
+		{
+			name:             "inexpose - after start time",
+			policy:           PolicyType("inexpose-" + strconv.FormatInt(now-10000, 10)),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "inexpose - invalid number",
+			policy:           PolicyType("inexpose-abc"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "unexpose - after end time (violation)",
+			policy:           PolicyType("unexpose-" + strconv.FormatInt(now-10000, 10)),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: true,
+		},
+		{
+			name:             "unexpose - before end time",
+			policy:           PolicyType("unexpose-" + strconv.FormatInt(now+10000, 10)),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "unexpose - invalid number",
+			policy:           PolicyType("unexpose-abc"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:   "istarget - user has attribute",
+			policy: PolicyType("istarget-premium"),
+			userId: "user1",
+			feedId: "post1",
+			resolver: &mockPolicyResolver{
+				userAttrs: map[string][]string{"user1": {"premium", "verified"}},
+			},
+			expectedViolated: false,
+		},
+		{
+			name:   "istarget - user missing attribute (violation)",
+			policy: PolicyType("istarget-premium"),
+			userId: "user1",
+			feedId: "post1",
+			resolver: &mockPolicyResolver{
+				userAttrs: map[string][]string{"user1": {"basic"}},
+			},
+			expectedViolated: true,
+		},
+		{
+			name:   "istarget - resolver error",
+			policy: PolicyType("istarget-premium"),
+			userId: "user1",
+			feedId: "post1",
+			resolver: &mockPolicyResolver{
+				userAttrsErr: errors.New("db error"),
+			},
+			expectedViolated: false,
+		},
+		{
+			name:             "distinct - no violation (helper policy)",
+			policy:           PolicyType("distinct-100"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "interval - no violation (helper policy)",
+			policy:           PolicyType("interval-100"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+		{
+			name:             "unknown policy type",
+			policy:           PolicyType("unknown-100"),
+			userId:           "user1",
+			feedId:           "post1",
+			resolver:         &mockPolicyResolver{},
+			expectedViolated: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.policy.Violated(ctx, tt.userId, tt.feedId, tt.resolver)
+			if result != tt.expectedViolated {
+				t.Errorf("expected violated=%v, got %v", tt.expectedViolated, result)
+			}
+		})
 	}
 }
