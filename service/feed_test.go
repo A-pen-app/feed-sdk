@@ -75,12 +75,18 @@ type mockPolicyResolver struct {
 	userAttrsErr     error
 }
 
-func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string) (int64, error) {
+func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string, uniqueUser bool) (int64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
-	if count, exists := m.viewCounts[postID]; exists {
-		return count, nil
+	if uniqueUser {
+		if count, exists := m.uniqueViewCounts[postID]; exists {
+			return count, nil
+		}
+	} else {
+		if count, exists := m.viewCounts[postID]; exists {
+			return count, nil
+		}
 	}
 	return 0, nil
 }

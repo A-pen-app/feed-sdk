@@ -56,7 +56,7 @@ const (
 )
 
 type PolicyResolver interface {
-	GetPostViewCount(ctx context.Context, postID string) (int64, error)
+	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool) (int64, error)
 	GetPostUniqueUserViewCount(ctx context.Context, postID string) (int64, error)
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
@@ -81,7 +81,11 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 				logging.Errorw(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedId, "policy", p)
 				return false
 			}
-			views, err := resolver.GetPostViewCount(ctx, feedId)
+			var uniqueUser bool
+			if len(parsed) > 2 && parsed[2] == Distinct.String() {
+				uniqueUser = true
+			}
+			views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser)
 			if err != nil {
 				logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
 				return false
