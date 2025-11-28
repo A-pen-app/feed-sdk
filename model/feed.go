@@ -57,7 +57,6 @@ const (
 
 type PolicyResolver interface {
 	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool) (int64, error)
-	GetPostUniqueUserViewCount(ctx context.Context, postID string) (int64, error)
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
