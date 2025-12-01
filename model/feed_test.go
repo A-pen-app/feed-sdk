@@ -31,7 +31,7 @@ type mockPolicyResolver struct {
 	userAttrsErr     error
 }
 
-func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string, uniqueUser bool) (int64, error) {
+func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, interval int64) (int64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
@@ -293,7 +293,7 @@ func TestPolicyTypeString(t *testing.T) {
 		{"unexpose", Unexpose, "unexpose"},
 		{"istarget", Istarget, "istarget"},
 		{"distinct", Distinct, "distinct"},
-		{"interval", Inverval, "interval"},
+		{"interval", Interval, "interval"},
 	}
 
 	for _, tt := range tests {
