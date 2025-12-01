@@ -9,10 +9,28 @@ A Go SDK for managing content feeds with policy-based filtering and positioning.
 ## Features
 
 - Feed aggregation and sorting based on scoring
-- Policy enforcement for feed visibility (exposure, inexposure, unexposure)
+- Policy enforcement for feed visibility
 - Feed positioning and reordering
 - Policy violation detection to filter feeds
 - Database persistence for feed policies
+
+## Policy Types
+
+The SDK supports the following policy types for controlling feed visibility:
+
+| Policy | Format | Description |
+|--------|--------|-------------|
+| `exposure` | `exposure-{limit}[-distinct][-interval-{seconds}]` | Limits total view count. Optional `distinct` for unique users, `interval` for time window. |
+| `inexpose` | `inexpose-{timestamp}` | Feed becomes visible after the specified Unix timestamp |
+| `unexpose` | `unexpose-{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
+| `istarget` | `istarget-{attribute}` | Feed is only visible to users with the specified attribute |
+
+### Helper Policies
+
+These are used as modifiers for other policies:
+
+- `distinct` - When used with `exposure`, counts unique users instead of total views
+- `interval` - When used with `exposure`, specifies a time window in seconds for counting views
 
 ## Testing
 
@@ -33,7 +51,7 @@ go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
 
-Current test coverage: **98.8%**
+Current test coverage: **82.6%**
 
 ## CI/CD
 
