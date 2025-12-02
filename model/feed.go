@@ -53,11 +53,11 @@ const (
 	Unexpose PolicyType = "unexpose"
 	Istarget PolicyType = "istarget"
 	Distinct PolicyType = "distinct"
-	Interval PolicyType = "interval"
+	Duration PolicyType = "duration"
 )
 
 type PolicyResolver interface {
-	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, interval int64) (int64, error)
+	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64) (int64, error)
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
@@ -67,18 +67,18 @@ func (p PolicyType) String() string {
 
 func (p PolicyType) exposureParamParser(ctx context.Context, parsed []string) (bool, int64, error) {
 	var err error
-	var interval int64
+	var duration int64
 	var unique bool
 	for i := 0; i < len(parsed); i++ {
 		switch parsed[i] {
 		case Distinct.String():
 			unique = true
-		case Interval.String():
+		case Duration.String():
 			if i == len(parsed)-1 {
-				err = errors.New("helper policy parsing error for polcy type interval")
-				break // there should be a number following interval which defines how long the intercal is
+				err = errors.New("helper policy parsing error for polcy type duration")
+				break // there should be a number following duration which defines how long the intercal is
 			}
-			interval, err = strconv.ParseInt(parsed[i+1], 10, 64)
+			duration, err = strconv.ParseInt(parsed[i+1], 10, 64)
 			if err != nil {
 				logging.Errorw(ctx, "failed parsing policy number", "policy", p, "param", parsed[i])
 				break
@@ -88,7 +88,7 @@ func (p PolicyType) exposureParamParser(ctx context.Context, parsed []string) (b
 			err = errors.New("unknown helper policy for policy type exposure")
 		}
 	}
-	return unique, interval, err
+	return unique, duration, err
 }
 
 func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver) bool {
@@ -107,16 +107,16 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 				logging.Errorw(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedId, "policy", p)
 				return false
 			}
-			var interval int64
+			var duration int64
 			var uniqueUser bool
 			if len(parsed) > 2 {
-				uniqueUser, interval, err = Exposure.exposureParamParser(ctx, parsed[2:])
+				uniqueUser, duration, err = Exposure.exposureParamParser(ctx, parsed[2:])
 				if err != nil {
 					logging.Errorw(ctx, "failed to parse exposure suffix", "feed_id", feedId, "policy", p, "err", err)
 					return false
 				}
 			}
-			views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, interval)
+			views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration)
 			if err != nil {
 				logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
 				return false
