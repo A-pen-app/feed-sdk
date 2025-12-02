@@ -293,7 +293,7 @@ func TestPolicyTypeString(t *testing.T) {
 		{"unexpose", Unexpose, "unexpose"},
 		{"istarget", Istarget, "istarget"},
 		{"distinct", Distinct, "distinct"},
-		{"interval", Interval, "interval"},
+		{"duration", Duration, "duration"},
 	}
 
 	for _, tt := range tests {
