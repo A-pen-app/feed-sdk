@@ -17,6 +17,7 @@ func newMockStore(t *testing.T) (*store, sqlmock.Sqlmock, func()) {
 	}
 
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	sqlxDB := sqlx.NewDb(db, "postgres")
 	s := NewFeed(sqlxDB)
@@ -42,6 +43,7 @@ func TestNewFeed(t *testing.T) {
 		defer db.Close()
 
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 
 		sqlxDB := sqlx.NewDb(db, "postgres")
 		store := NewFeed(sqlxDB)

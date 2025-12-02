@@ -17,6 +17,29 @@ CREATE TABLE IF NOT EXISTS feed (
 	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 )`
 
+// addPolicyFormatConstraintSQL adds a CHECK constraint to validate policy format.
+// Policies must be hyphen-separated with a valid policy type prefix.
+// To update this constraint when adding new policy types:
+//  1. Add the new policy type to the regex pattern
+//  2. Run the migration (it will drop and recreate the constraint)
+const addPolicyFormatConstraintSQL = `
+DO $$
+BEGIN
+	-- Drop existing constraint if it exists (allows updating policy types)
+	ALTER TABLE feed DROP CONSTRAINT IF EXISTS policies_format_check;
+
+	-- Add constraint that validates each policy in the array
+	-- Format: {policy_type}-{params} where policy_type is one of the known types
+	ALTER TABLE feed ADD CONSTRAINT policies_format_check CHECK (
+		policies = ARRAY[]::character varying[]
+		OR NOT EXISTS (
+			SELECT 1 FROM unnest(policies) AS p
+			WHERE p !~ '^(exposure|inexpose|unexpose|istarget)-[a-z0-9-]+$'
+		)
+	);
+END $$;
+`
+
 func NewFeed(db *sqlx.DB) *store {
 	if db == nil {
 		panic("database connection cannot be nil")
@@ -24,6 +47,10 @@ func NewFeed(db *sqlx.DB) *store {
 
 	if _, err := db.Exec(createTableSQL); err != nil {
 		panic("failed to create feed table: " + err.Error())
+	}
+
+	if _, err := db.Exec(addPolicyFormatConstraintSQL); err != nil {
+		panic("failed to add policy format constraint: " + err.Error())
 	}
 
 	return &store{
