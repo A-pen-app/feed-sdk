@@ -93,71 +93,72 @@ func (p PolicyType) exposureParamParser(ctx context.Context, parsed []string) (b
 
 func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver) bool {
 	// whenever there is a violation to policy attribute, the post is removed from the feed
-	if parsed := strings.Split(p.String(), "-"); len(parsed) > 1 {
-		policyName, rawParam := parsed[0], parsed[1]
-		logging.Debug(ctx, "examine violation of policy", "feed_id", feedId, "policy", p, "param", rawParam)
-		switch policyName {
-		case Exposure.String():
-			limit, err := strconv.ParseInt(rawParam, 10, 64)
-			if err != nil {
-				logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
-				return false
-			}
-			if resolver == nil {
-				logging.Errorw(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedId, "policy", p)
-				return false
-			}
-			var duration int64
-			var uniqueUser bool
-			if len(parsed) > 2 {
-				uniqueUser, duration, err = Exposure.exposureParamParser(ctx, parsed[2:])
-				if err != nil {
-					logging.Errorw(ctx, "failed to parse exposure suffix", "feed_id", feedId, "policy", p, "err", err)
-					return false
-				}
-			}
-			views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration)
-			if err != nil {
-				logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
-				return false
-			}
-			if views > limit {
-				return true
-			}
-		case Inexpose.String(): // the time when the feed should start having exposure
-			inexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
-			if err != nil {
-				logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
-				return false
-			}
-			if time.Now().Unix() < inexposeTime {
-				return true
-			}
-		case Unexpose.String(): // the time when the feed should stop having exposure
-			unexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
-			if err != nil {
-				logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
-				return false
-			}
-			if time.Now().Unix() > unexposeTime {
-				return true
-			}
-		case Istarget.String(): // the target attribute which the feed should have a match
-			if userAttrs, err := resolver.GetUserAttribute(ctx, userId); err != nil {
-				logging.Errorw(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedId, "policy", p)
-				return false
-			} else {
-				if !slices.Contains(userAttrs, rawParam) {
-					// no attribute matches the given target attribute, the policy is violated
-					return true
-				}
-				// matched - no violation, return false to next policy
-			}
-		default:
-			logging.Errorw(ctx, "unknown policy, the policy will not take effect", "feed_id", feedId, "policy", p)
-		}
-	} else {
+	parsed := strings.Split(p.String(), "-")
+	if len(parsed) <= 1 {
 		logging.Errorw(ctx, "failed parsing policy, the policy will not take effect", "feed_id", feedId, "policy", p)
+		return false
+	}
+	policyName, rawParam := parsed[0], parsed[1]
+	logging.Debug(ctx, "examine violation of policy", "feed_id", feedId, "policy", p, "param", rawParam)
+	switch policyName {
+	case Exposure.String():
+		limit, err := strconv.ParseInt(rawParam, 10, 64)
+		if err != nil {
+			logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
+			return false
+		}
+		if resolver == nil {
+			logging.Errorw(ctx, "resolver cannot be nil, the policy will not take effect", "feed_id", feedId, "policy", p)
+			return false
+		}
+		var duration int64
+		var uniqueUser bool
+		if len(parsed) > 2 {
+			uniqueUser, duration, err = Exposure.exposureParamParser(ctx, parsed[2:])
+			if err != nil {
+				logging.Errorw(ctx, "failed to parse exposure suffix", "feed_id", feedId, "policy", p, "err", err)
+				return false
+			}
+		}
+		views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration)
+		if err != nil {
+			logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
+			return false
+		}
+		if views > limit {
+			return true
+		}
+	case Inexpose.String(): // the time when the feed should start having exposure
+		inexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
+		if err != nil {
+			logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
+			return false
+		}
+		if time.Now().Unix() < inexposeTime {
+			return true
+		}
+	case Unexpose.String(): // the time when the feed should stop having exposure
+		unexposeTime, err := strconv.ParseInt(rawParam, 10, 64)
+		if err != nil {
+			logging.Errorw(ctx, "failed parsing policy number, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam)
+			return false
+		}
+		if time.Now().Unix() > unexposeTime {
+			return true
+		}
+	case Istarget.String(): // the target attribute which the feed should have a match
+		if userAttrs, err := resolver.GetUserAttribute(ctx, userId); err != nil {
+			logging.Errorw(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedId, "policy", p)
+			return false
+		} else {
+			if !slices.Contains(userAttrs, rawParam) {
+				// no attribute matches the given target attribute, the policy is violated
+				return true
+			}
+			// matched - no violation, return false to next policy
+		}
+	default:
+		logging.Errorw(ctx, "unknown policy, the policy will not take effect", "feed_id", feedId, "policy", p)
 	}
 	return false
 }
