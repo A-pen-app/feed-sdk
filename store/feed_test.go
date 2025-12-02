@@ -10,6 +10,20 @@ import (
 	"github.com/lib/pq"
 )
 
+func newMockStore(t *testing.T) (*store, sqlmock.Sqlmock, func()) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock db: %v", err)
+	}
+
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+
+	sqlxDB := sqlx.NewDb(db, "postgres")
+	s := NewFeed(sqlxDB)
+
+	return s, mock, func() { db.Close() }
+}
+
 func TestNewFeed(t *testing.T) {
 	t.Run("panics with nil database", func(t *testing.T) {
 		defer func() {
@@ -21,11 +35,13 @@ func TestNewFeed(t *testing.T) {
 	})
 
 	t.Run("creates store with valid database", func(t *testing.T) {
-		db, _, err := sqlmock.New()
+		db, mock, err := sqlmock.New()
 		if err != nil {
 			t.Fatalf("failed to create mock db: %v", err)
 		}
 		defer db.Close()
+
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
 
 		sqlxDB := sqlx.NewDb(db, "postgres")
 		store := NewFeed(sqlxDB)
@@ -36,6 +52,29 @@ func TestNewFeed(t *testing.T) {
 		if store.db == nil {
 			t.Error("expected store.db to be set, got nil")
 		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("panics on migration error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic on migration error, but did not panic")
+			}
+		}()
+
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("failed to create mock db: %v", err)
+		}
+		defer db.Close()
+
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnError(sqlmock.ErrCancelled)
+
+		sqlxDB := sqlx.NewDb(db, "postgres")
+		NewFeed(sqlxDB)
 	})
 }
 
@@ -93,14 +132,8 @@ func TestGetPolicies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatalf("failed to create mock db: %v", err)
-			}
-			defer db.Close()
-
-			sqlxDB := sqlx.NewDb(db, "postgres")
-			store := NewFeed(sqlxDB)
+			store, mock, cleanup := newMockStore(t)
+			defer cleanup()
 
 			// Set up expectations
 			if tt.mockError != nil {
@@ -179,14 +212,8 @@ func TestPatchFeed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatalf("failed to create mock db: %v", err)
-			}
-			defer db.Close()
-
-			sqlxDB := sqlx.NewDb(db, "postgres")
-			store := NewFeed(sqlxDB)
+			store, mock, cleanup := newMockStore(t)
+			defer cleanup()
 
 			// Set up expectations
 			// Note: ON CONFLICT DO UPDATE uses named parameters which get converted to positional.
@@ -199,7 +226,7 @@ func TestPatchFeed(t *testing.T) {
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			}
 
-			err = store.PatchFeed(ctx, tt.feedID, tt.feedType, tt.position)
+			err := store.PatchFeed(ctx, tt.feedID, tt.feedType, tt.position)
 
 			if tt.expectedError {
 				if err == nil {
@@ -250,14 +277,8 @@ func TestDeleteFeed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatalf("failed to create mock db: %v", err)
-			}
-			defer db.Close()
-
-			sqlxDB := sqlx.NewDb(db, "postgres")
-			store := NewFeed(sqlxDB)
+			store, mock, cleanup := newMockStore(t)
+			defer cleanup()
 
 			// Set up expectations
 			if tt.mockError != nil {
@@ -268,7 +289,7 @@ func TestDeleteFeed(t *testing.T) {
 					WillReturnResult(sqlmock.NewResult(0, tt.rowsAffected))
 			}
 
-			err = store.DeleteFeed(ctx, tt.feedID)
+			err := store.DeleteFeed(ctx, tt.feedID)
 
 			if tt.expectedError {
 				if err == nil {
@@ -291,14 +312,8 @@ func TestDeleteFeed(t *testing.T) {
 
 func TestGetPoliciesOrderBy(t *testing.T) {
 	ctx := context.Background()
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to create mock db: %v", err)
-	}
-	defer db.Close()
-
-	sqlxDB := sqlx.NewDb(db, "postgres")
-	store := NewFeed(sqlxDB)
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
 
 	// Create rows in reverse order to verify ORDER BY works
 	mockRows := sqlmock.NewRows([]string{"feed_id", "feed_type", "position", "policies"}).

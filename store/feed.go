@@ -7,9 +7,23 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const createTableSQL = `
+CREATE TABLE IF NOT EXISTS feed (
+	feed_id uuid NOT NULL,
+	position integer NOT NULL DEFAULT 0,
+	feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
+	policies character varying(50)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+	CONSTRAINT feed_pkey PRIMARY KEY (feed_id),
+	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
+)`
+
 func NewFeed(db *sqlx.DB) *store {
 	if db == nil {
 		panic("database connection cannot be nil")
+	}
+
+	if _, err := db.Exec(createTableSQL); err != nil {
+		panic("failed to create feed table: " + err.Error())
 	}
 
 	return &store{
