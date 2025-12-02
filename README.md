@@ -6,6 +6,12 @@
 
 A Go SDK for managing content feeds with policy-based filtering and positioning.
 
+## Installation
+
+```bash
+go get github.com/A-pen-app/feed-sdk
+```
+
 ## Features
 
 - Feed aggregation and sorting based on scoring
@@ -14,23 +20,119 @@ A Go SDK for managing content feeds with policy-based filtering and positioning.
 - Policy violation detection to filter feeds
 - Database persistence for feed policies
 
+## Usage
+
+### Basic Setup
+
+```go
+import (
+    "github.com/A-pen-app/feed-sdk/model"
+    "github.com/A-pen-app/feed-sdk/service"
+    "github.com/A-pen-app/feed-sdk/store"
+    "github.com/jmoiron/sqlx"
+)
+
+// Your data type must implement model.Scorable interface
+type Post struct {
+    ID    string
+    Title string
+    score float64
+}
+
+func (p Post) GetID() string           { return p.ID }
+func (p Post) Feedtype() model.FeedType { return model.TypePost }
+func (p Post) Score() float64          { return p.score }
+
+// Initialize the service
+db := sqlx.MustConnect("postgres", "postgresql://user:pass@host/db")
+feedStore := store.NewFeed(db)
+feedService := service.NewFeed[Post](feedStore)
+```
+
+### Get Sorted Feeds
+
+```go
+posts := []Post{
+    {ID: "1", Title: "First", score: 10.0},
+    {ID: "2", Title: "Second", score: 20.0},
+}
+
+// Returns feeds sorted by score (descending), with positioned feeds placed accordingly
+feeds, err := feedService.GetFeeds(ctx, posts)
+```
+
+### Position Feeds
+
+```go
+// Pin a feed to position 0
+err := feedService.PatchFeed(ctx, "post123", model.TypePost, 0)
+
+// Get all positions (for displaying available slots)
+positions, err := feedService.GetPolicies(ctx, 10)
+
+// Remove a feed from its position
+err := feedService.DeleteFeed(ctx, "post123")
+```
+
+### Policy Enforcement
+
+To enforce policies, implement the `PolicyResolver` interface:
+
+```go
+type PolicyResolver interface {
+    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64) (int64, error)
+    GetUserAttribute(ctx context.Context, userID string) ([]string, error)
+}
+```
+
+Then build a violation map:
+
+```go
+violations := feedService.BuildPolicyViolationMap(ctx, userID, policyMap, resolver)
+// violations is map[feedID]violatedPolicy - feeds in the map should be filtered out
+```
+
 ## Policy Types
 
 The SDK supports the following policy types for controlling feed visibility:
 
 | Policy | Format | Description |
 |--------|--------|-------------|
-| `exposure` | `exposure-{limit}[-distinct][-interval-{seconds}]` | Limits total view count. Optional `distinct` for unique users, `interval` for time window. |
+| `exposure` | `exposure-{limit}[-distinct][-duration-{seconds}]` | Limits total view count. Optional `distinct` for unique users, `duration` for time window. |
 | `inexpose` | `inexpose-{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose-{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
 | `istarget` | `istarget-{attribute}` | Feed is only visible to users with the specified attribute |
 
+### Policy Examples
+
+```
+exposure-1000                         # Max 1000 total views
+exposure-1000-distinct                # Max 1000 unique users
+exposure-1000-distinct-duration-3600  # Max 1000 unique users per hour
+inexpose-1735689600                   # Hidden until Jan 1, 2025
+unexpose-1735689600                   # Visible until Jan 1, 2025
+istarget-premium                      # Only for users with "premium" attribute
+```
+
 ### Helper Policies
 
-These are used as modifiers for other policies:
+These are used as modifiers for the `exposure` policy:
 
-- `distinct` - When used with `exposure`, counts unique users instead of total views
-- `interval` - When used with `exposure`, specifies a time window in seconds for counting views
+- `distinct` - Counts unique users instead of total views
+- `duration` - Specifies a time window in seconds for counting views
+
+## Database Schema
+
+The SDK expects a `feed` table:
+
+```sql
+CREATE TABLE feed (
+    feed_id   VARCHAR PRIMARY KEY,
+    feed_type VARCHAR,
+    position  INTEGER,
+    policies  TEXT[] DEFAULT ARRAY[]::TEXT[]
+);
+```
 
 ## Testing
 
@@ -51,7 +153,7 @@ go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
 
-Current test coverage: **82.6%**
+Current test coverage: model 69.7%, service 97.8%, store 100%
 
 ## CI/CD
 
