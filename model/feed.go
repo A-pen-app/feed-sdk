@@ -88,7 +88,12 @@ loop:
 			}
 			i++ // we have used up two params from the parsed strings
 		case IsTheOne.String():
-			userId = parsed[i]
+			if i == len(parsed)-1 {
+				err = errors.New("helper policy parsing error for polcy type istheone")
+				break loop // there should be a string following istheone which defines which user_id to target
+			}
+			userId = parsed[i+1]
+			i++
 		default:
 			err = errors.New("unknown helper policy for policy type exposure")
 			break loop
