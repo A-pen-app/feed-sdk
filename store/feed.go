@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS feed (
 )`
 
 // addPolicyFormatConstraintSQL creates a trigger function and trigger to validate policy format.
-// Policies must be hyphen-separated with a valid policy type prefix.
+// Policies must be colon-separated with a valid policy type prefix.
 // To update this constraint when adding new policy types:
 //  1. Add the new policy type to the regex pattern in the function
 //  2. Run the migration (it will replace the function)
@@ -33,8 +33,8 @@ BEGIN
 	BEGIN
 		IF NEW.policies IS NOT NULL AND array_length(NEW.policies, 1) > 0 THEN
 			FOREACH p IN ARRAY NEW.policies LOOP
-				IF p !~ '^(exposure|inexpose|unexpose|istarget|istheone)-[a-z0-9-]+$' THEN
-					RAISE EXCEPTION 'Invalid policy format: %. Must match pattern {policy_type}-{params}', p;
+				IF p !~ '^(exposure|inexpose|unexpose|istarget|istheone):[a-z0-9:]+$' THEN
+					RAISE EXCEPTION 'Invalid policy format: %. Must match pattern {policy_type}:{params}', p;
 				END IF;
 			END LOOP;
 		END IF;
