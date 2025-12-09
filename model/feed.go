@@ -104,7 +104,7 @@ loop:
 
 func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver) bool {
 	// whenever there is a violation to policy attribute, the post is removed from the feed
-	parsed := strings.Split(p.String(), "-")
+	parsed := strings.Split(p.String(), ":")
 	if len(parsed) <= 1 {
 		logging.Errorw(ctx, "failed parsing policy, the policy will not take effect", "feed_id", feedId, "policy", p)
 		return false
