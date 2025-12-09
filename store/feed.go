@@ -17,26 +17,39 @@ CREATE TABLE IF NOT EXISTS feed (
 	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 )`
 
-// addPolicyFormatConstraintSQL adds a CHECK constraint to validate policy format.
+// addPolicyFormatConstraintSQL creates a trigger function and trigger to validate policy format.
 // Policies must be hyphen-separated with a valid policy type prefix.
 // To update this constraint when adding new policy types:
-//  1. Add the new policy type to the regex pattern
-//  2. Run the migration (it will drop and recreate the constraint)
+//  1. Add the new policy type to the regex pattern in the function
+//  2. Run the migration (it will replace the function)
 const addPolicyFormatConstraintSQL = `
 DO $$
 BEGIN
-	-- Drop existing constraint if it exists (allows updating policy types)
-	ALTER TABLE feed DROP CONSTRAINT IF EXISTS policies_format_check;
+	-- Create or replace the validation function
+	CREATE OR REPLACE FUNCTION validate_policies_format()
+	RETURNS TRIGGER AS $func$
+	DECLARE
+		p TEXT;
+	BEGIN
+		IF NEW.policies IS NOT NULL AND array_length(NEW.policies, 1) > 0 THEN
+			FOREACH p IN ARRAY NEW.policies LOOP
+				IF p !~ '^(exposure|inexpose|unexpose|istarget|istheone)-[a-z0-9-]+$' THEN
+					RAISE EXCEPTION 'Invalid policy format: %. Must match pattern {policy_type}-{params}', p;
+				END IF;
+			END LOOP;
+		END IF;
+		RETURN NEW;
+	END;
+	$func$ LANGUAGE plpgsql;
 
-	-- Add constraint that validates each policy in the array
-	-- Format: {policy_type}-{params} where policy_type is one of the known types
-	ALTER TABLE feed ADD CONSTRAINT policies_format_check CHECK (
-		policies = ARRAY[]::character varying[]
-		OR NOT EXISTS (
-			SELECT 1 FROM unnest(policies) AS p
-			WHERE p !~ '^(exposure|inexpose|unexpose|istarget)-[a-z0-9-]+$'
-		)
-	);
+	-- Drop existing trigger if it exists
+	DROP TRIGGER IF EXISTS policies_format_trigger ON feed;
+
+	-- Create the trigger
+	CREATE TRIGGER policies_format_trigger
+		BEFORE INSERT OR UPDATE ON feed
+		FOR EACH ROW
+		EXECUTE FUNCTION validate_policies_format();
 END $$;
 `
 
