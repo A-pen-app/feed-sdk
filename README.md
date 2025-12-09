@@ -80,7 +80,7 @@ To enforce policies, implement the `PolicyResolver` interface:
 
 ```go
 type PolicyResolver interface {
-    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64) (int64, error)
+    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetUserId string) (int64, error)
     GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 ```
@@ -98,7 +98,7 @@ The SDK supports the following policy types for controlling feed visibility:
 
 | Policy | Format | Description |
 |--------|--------|-------------|
-| `exposure` | `exposure-{limit}[-distinct][-duration-{seconds}]` | Limits total view count. Optional `distinct` for unique users, `duration` for time window. |
+| `exposure` | `exposure-{limit}[-distinct][-duration-{seconds}][-istheone]` | Limits total view count. Optional `distinct` for unique users, `duration` for time window, `istheone` for targeting a specific user. |
 | `inexpose` | `inexpose-{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose-{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
 | `istarget` | `istarget-{attribute}` | Feed is only visible to users with the specified attribute |
@@ -120,6 +120,7 @@ These are used as modifiers for the `exposure` policy:
 
 - `distinct` - Counts unique users instead of total views
 - `duration` - Specifies a time window in seconds for counting views
+- `istheone` - Targets view count for a specific user (uses the current user's ID)
 
 ## Database Schema
 
