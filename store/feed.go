@@ -33,7 +33,7 @@ BEGIN
 	BEGIN
 		IF NEW.policies IS NOT NULL AND array_length(NEW.policies, 1) > 0 THEN
 			FOREACH p IN ARRAY NEW.policies LOOP
-				IF p !~ '^(exposure|inexpose|unexpose|istarget|istheone):[a-z0-9:]+$' THEN
+				IF p !~ '^(exposure|inexpose|unexpose|istarget|istheone):[a-z0-9:-]+$' THEN
 					RAISE EXCEPTION 'Invalid policy format: %. Must match pattern {policy_type}:{params}', p;
 				END IF;
 			END LOOP;
