@@ -80,7 +80,7 @@ To enforce policies, implement the `PolicyResolver` interface:
 
 ```go
 type PolicyResolver interface {
-    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetUserId string) (int64, error)
+    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetViewerID *string) (int64, error)
     GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 ```

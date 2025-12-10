@@ -58,7 +58,7 @@ const (
 )
 
 type PolicyResolver interface {
-	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetUserId string) (int64, error)
+	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetViewerID *string) (int64, error)
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
@@ -66,11 +66,11 @@ func (p PolicyType) String() string {
 	return string(p)
 }
 
-func (p PolicyType) exposureParamParser(ctx context.Context, parsed []string) (bool, int64, string, error) {
+func (p PolicyType) exposureParamParser(ctx context.Context, parsed []string) (bool, int64, *string, error) {
 	var err error
 	var duration int64
 	var unique bool
-	var userId string
+	var userId *string
 loop:
 	for i := 0; i < len(parsed); i++ {
 		switch parsed[i] {
@@ -92,7 +92,7 @@ loop:
 				err = errors.New("helper policy parsing error for polcy type istheone")
 				break loop // there should be a string following istheone which defines which user_id to target
 			}
-			userId = parsed[i+1]
+			userId = &parsed[i+1]
 			i++
 		default:
 			err = errors.New("unknown helper policy for policy type exposure")
@@ -124,15 +124,15 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 		}
 		var duration int64
 		var uniqueUser bool
-		var targetUserId string
+		var targetViewerID *string
 		if len(parsed) > 2 {
-			uniqueUser, duration, targetUserId, err = Exposure.exposureParamParser(ctx, parsed[2:])
+			uniqueUser, duration, targetViewerID, err = Exposure.exposureParamParser(ctx, parsed[2:])
 			if err != nil {
 				logging.Errorw(ctx, "failed to parse exposure suffix", "feed_id", feedId, "policy", p, "err", err)
 				return false
 			}
 		}
-		views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration, targetUserId)
+		views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration, targetViewerID)
 		if err != nil {
 			logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
 			return false

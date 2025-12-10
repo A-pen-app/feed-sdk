@@ -75,7 +75,7 @@ type mockPolicyResolver struct {
 	userAttrsErr     error
 }
 
-func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, interval int64, targetUserId string) (int64, error) {
+func (m *mockPolicyResolver) GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, interval int64, targetViewerID string) (int64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
