@@ -80,7 +80,8 @@ To enforce policies, implement the `PolicyResolver` interface:
 
 ```go
 type PolicyResolver interface {
-    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64, targetViewerID *string) (int64, error)
+    GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64) (int64, error)
+    GetViewerPostViewCount(ctx context.Context, postID, userID string) (int64, error)
     GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 ```
@@ -98,7 +99,8 @@ The SDK supports the following policy types for controlling feed visibility:
 
 | Policy | Format | Description |
 |--------|--------|-------------|
-| `exposure` | `exposure:{limit}[:distinct][:duration:{seconds}][:istheone:{userId}]` | Limits total view count. Optional `distinct` for unique users, `duration` for time window, `istheone` for targeting a specific user's view count. |
+| `exposure` | `exposure:{limit}[:distinct][:duration:{seconds}]` | Limits total view count. Optional `distinct` for unique users, `duration` for time window. |
+| `istheone` | `istheone:{limit}:{userId}` | Limits view count for a specific user. |
 | `inexpose` | `inexpose:{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose:{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
 | `istarget` | `istarget:{attribute}` | Feed is only visible to users with the specified attribute |
@@ -109,7 +111,7 @@ The SDK supports the following policy types for controlling feed visibility:
 exposure:1000                              # Max 1000 total views
 exposure:1000:distinct                     # Max 1000 unique users
 exposure:1000:distinct:duration:3600       # Max 1000 unique users per hour
-exposure:5:istheone:user123                # Max 5 views for user "user123"
+istheone:5:user123                         # Max 5 views for user "user123"
 inexpose:1735689600                        # Hidden until Jan 1, 2025
 unexpose:1735689600                        # Visible until Jan 1, 2025
 istarget:premium                           # Only for users with "premium" attribute
@@ -121,7 +123,6 @@ These are used as modifiers for the `exposure` policy:
 
 - `distinct` - Counts unique users instead of total views
 - `duration` - Specifies a time window in seconds for counting views
-- `istheone` - Targets view count for a specific user ID (format: `istheone:{userId}`)
 
 ## Database Schema
 
