@@ -41,6 +41,7 @@ type FeedType string
 
 const (
 	TypePost    FeedType = "post"
+	TypePosts   FeedType = "posts"
 	TypeBanners FeedType = "banners"
 	TypeChat    FeedType = "chat"
 )
