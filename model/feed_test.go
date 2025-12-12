@@ -327,7 +327,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "exposure - under limit",
-			policy:           PolicyType("exposure-1000"),
+			policy:           PolicyType("exposure:1000"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{viewCounts: map[string]int64{"post1": 500}},
@@ -335,7 +335,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "exposure - over limit (violation)",
-			policy:           PolicyType("exposure-1000"),
+			policy:           PolicyType("exposure:1000"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{viewCounts: map[string]int64{"post1": 1500}},
@@ -343,7 +343,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "exposure - invalid number",
-			policy:           PolicyType("exposure-abc"),
+			policy:           PolicyType("exposure:abc"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -351,7 +351,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "exposure - nil resolver",
-			policy:           PolicyType("exposure-1000"),
+			policy:           PolicyType("exposure:1000"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         nil,
@@ -359,7 +359,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "exposure - resolver error",
-			policy:           PolicyType("exposure-1000"),
+			policy:           PolicyType("exposure:1000"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{err: errors.New("db error")},
@@ -367,7 +367,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "inexpose - before start time (violation)",
-			policy:           PolicyType("inexpose-" + strconv.FormatInt(now+10000, 10)),
+			policy:           PolicyType("inexpose:" + strconv.FormatInt(now+10000, 10)),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -375,7 +375,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "inexpose - after start time",
-			policy:           PolicyType("inexpose-" + strconv.FormatInt(now-10000, 10)),
+			policy:           PolicyType("inexpose:" + strconv.FormatInt(now-10000, 10)),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -383,7 +383,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "inexpose - invalid number",
-			policy:           PolicyType("inexpose-abc"),
+			policy:           PolicyType("inexpose:abc"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -391,7 +391,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "unexpose - after end time (violation)",
-			policy:           PolicyType("unexpose-" + strconv.FormatInt(now-10000, 10)),
+			policy:           PolicyType("unexpose:" + strconv.FormatInt(now-10000, 10)),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -399,7 +399,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "unexpose - before end time",
-			policy:           PolicyType("unexpose-" + strconv.FormatInt(now+10000, 10)),
+			policy:           PolicyType("unexpose:" + strconv.FormatInt(now+10000, 10)),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -407,7 +407,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "unexpose - invalid number",
-			policy:           PolicyType("unexpose-abc"),
+			policy:           PolicyType("unexpose:abc"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -415,7 +415,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:   "istarget - user has attribute",
-			policy: PolicyType("istarget-premium"),
+			policy: PolicyType("istarget:premium"),
 			userId: "user1",
 			feedId: "post1",
 			resolver: &mockPolicyResolver{
@@ -425,7 +425,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:   "istarget - user missing attribute (violation)",
-			policy: PolicyType("istarget-premium"),
+			policy: PolicyType("istarget:premium"),
 			userId: "user1",
 			feedId: "post1",
 			resolver: &mockPolicyResolver{
@@ -435,7 +435,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:   "istarget - resolver error",
-			policy: PolicyType("istarget-premium"),
+			policy: PolicyType("istarget:premium"),
 			userId: "user1",
 			feedId: "post1",
 			resolver: &mockPolicyResolver{
@@ -445,7 +445,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "distinct - no violation (helper policy)",
-			policy:           PolicyType("distinct-100"),
+			policy:           PolicyType("distinct:100"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -453,7 +453,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "interval - no violation (helper policy)",
-			policy:           PolicyType("interval-100"),
+			policy:           PolicyType("interval:100"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},
@@ -461,7 +461,7 @@ func TestPolicyTypeViolated(t *testing.T) {
 		},
 		{
 			name:             "unknown policy type",
-			policy:           PolicyType("unknown-100"),
+			policy:           PolicyType("unknown:100"),
 			userId:           "user1",
 			feedId:           "post1",
 			resolver:         &mockPolicyResolver{},

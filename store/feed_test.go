@@ -94,9 +94,9 @@ func TestGetPolicies(t *testing.T) {
 		{
 			name: "successful query with multiple policies",
 			mockRows: sqlmock.NewRows([]string{"feed_id", "feed_type", "position", "policies"}).
-				AddRow("feed1", "post", 0, pq.StringArray{"exposure-1000"}).
-				AddRow("feed2", "banners", 1, pq.StringArray{"inexpose-1234567890", "unexpose-9876543210"}).
-				AddRow("feed3", "chat", 2, pq.StringArray{"exposure-500"}),
+				AddRow("feed1", "post", 0, pq.StringArray{"exposure:1000"}).
+				AddRow("feed2", "banners", 1, pq.StringArray{"inexpose:1234567890", "unexpose:9876543210"}).
+				AddRow("feed3", "chat", 2, pq.StringArray{"exposure:500"}),
 			expectedCount: 3,
 			validateResult: func(t *testing.T, policies []model.Policy) {
 				if policies[0].FeedId != "feed1" {

@@ -463,7 +463,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000"},
+					Policies: pq.StringArray{"exposure:1000"},
 				},
 			},
 			resolver: &mockPolicyResolver{
@@ -476,14 +476,14 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000"},
+					Policies: pq.StringArray{"exposure:1000"},
 				},
 			},
 			resolver: &mockPolicyResolver{
 				viewCounts: map[string]int64{"post1": 1500},
 			},
 			expectedViolations: map[string]string{
-				"post1": "exposure-1000",
+				"post1": "exposure:1000",
 			},
 		},
 		{
@@ -491,12 +491,12 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"inexpose-9999999999"}, // Far future timestamp
+					Policies: pq.StringArray{"inexpose:9999999999"}, // Far future timestamp
 				},
 			},
 			resolver: &mockPolicyResolver{},
 			expectedViolations: map[string]string{
-				"post1": "inexpose-9999999999",
+				"post1": "inexpose:9999999999",
 			},
 		},
 		{
@@ -504,7 +504,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"inexpose-1000000000"}, // Old timestamp
+					Policies: pq.StringArray{"inexpose:1000000000"}, // Old timestamp
 				},
 			},
 			resolver:           &mockPolicyResolver{},
@@ -515,12 +515,12 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"unexpose-1000000000"}, // Old timestamp
+					Policies: pq.StringArray{"unexpose:1000000000"}, // Old timestamp
 				},
 			},
 			resolver: &mockPolicyResolver{},
 			expectedViolations: map[string]string{
-				"post1": "unexpose-1000000000",
+				"post1": "unexpose:1000000000",
 			},
 		},
 		{
@@ -528,7 +528,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"unexpose-9999999999"}, // Far future
+					Policies: pq.StringArray{"unexpose:9999999999"}, // Far future
 				},
 			},
 			resolver:           &mockPolicyResolver{},
@@ -540,8 +540,8 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 				"post1": {
 					FeedId: "post1",
 					Policies: pq.StringArray{
-						"exposure-1000",
-						"unexpose-9999999999",
+						"exposure:1000",
+						"unexpose:9999999999",
 					},
 				},
 			},
@@ -549,7 +549,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 				viewCounts: map[string]int64{"post1": 1500},
 			},
 			expectedViolations: map[string]string{
-				"post1": "exposure-1000", // First violation stops checking
+				"post1": "exposure:1000", // First violation stops checking
 			},
 		},
 		{
@@ -557,15 +557,15 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000"},
+					Policies: pq.StringArray{"exposure:1000"},
 				},
 				"post2": {
 					FeedId:   "post2",
-					Policies: pq.StringArray{"exposure-1000"},
+					Policies: pq.StringArray{"exposure:1000"},
 				},
 				"post3": {
 					FeedId:   "post3",
-					Policies: pq.StringArray{"inexpose-1000000000"},
+					Policies: pq.StringArray{"inexpose:1000000000"},
 				},
 			},
 			resolver: &mockPolicyResolver{
@@ -575,7 +575,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 				},
 			},
 			expectedViolations: map[string]string{
-				"post2": "exposure-1000",
+				"post2": "exposure:1000",
 			},
 		},
 	}
@@ -622,7 +622,7 @@ func TestCheckPolicyViolation(t *testing.T) {
 		expectedPolicyName string
 	}{
 		{
-			name:              "invalid policy format - no dash",
+			name:              "invalid policy format - no colon",
 			feedID:            "post1",
 			policies:          []string{"invalid"},
 			resolver:          &mockPolicyResolver{},
@@ -631,28 +631,28 @@ func TestCheckPolicyViolation(t *testing.T) {
 		{
 			name:              "invalid policy setting - not a number",
 			feedID:            "post1",
-			policies:          []string{"exposure-abc"},
+			policies:          []string{"exposure:abc"},
 			resolver:          &mockPolicyResolver{},
 			expectedViolation: false,
 		},
 		{
 			name:              "unknown policy type",
 			feedID:            "post1",
-			policies:          []string{"unknown-1000"},
+			policies:          []string{"unknown:1000"},
 			resolver:          &mockPolicyResolver{},
 			expectedViolation: false,
 		},
 		{
 			name:              "exposure with nil resolver",
 			feedID:            "post1",
-			policies:          []string{"exposure-1000"},
+			policies:          []string{"exposure:1000"},
 			resolver:          nil,
 			expectedViolation: false,
 		},
 		{
 			name:     "exposure with resolver error",
 			feedID:   "post1",
-			policies: []string{"exposure-1000"},
+			policies: []string{"exposure:1000"},
 			resolver: &mockPolicyResolver{
 				err: errors.New("resolver error"),
 			},
@@ -661,10 +661,10 @@ func TestCheckPolicyViolation(t *testing.T) {
 		{
 			name:               "inexpose - current time before threshold",
 			feedID:             "post1",
-			policies:           []string{"inexpose-" + strconv.FormatInt(now+10000, 10)},
+			policies:           []string{"inexpose:" + strconv.FormatInt(now+10000, 10)},
 			resolver:           &mockPolicyResolver{},
 			expectedViolation:  true,
-			expectedPolicyName: "inexpose-" + strconv.FormatInt(now+10000, 10),
+			expectedPolicyName: "inexpose:" + strconv.FormatInt(now+10000, 10),
 		},
 	}
 
@@ -708,7 +708,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -723,14 +723,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"basic", "verified"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Post should be hidden when user lacks the target attribute",
 		},
@@ -740,14 +740,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Post should be hidden when user has no attributes",
 		},
@@ -757,22 +757,22 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 				"post2": {
 					FeedId:   "post2",
-					Policies: pq.StringArray{"istarget-verified"},
+					Policies: pq.StringArray{"istarget:verified"},
 				},
 				"post3": {
 					FeedId:   "post3",
-					Policies: pq.StringArray{"istarget-admin"},
+					Policies: pq.StringArray{"istarget:admin"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"premium", "verified"},
 			},
 			expectedViolations: map[string]string{
-				"post3": "istarget-admin",
+				"post3": "istarget:admin",
 			},
 			description: "Only posts requiring missing attributes should be hidden",
 		},
@@ -782,14 +782,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-Premium"},
+					Policies: pq.StringArray{"istarget:Premium"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"premium"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-Premium",
+				"post1": "istarget:Premium",
 			},
 			description: "Attribute matching should be case-sensitive",
 		},
@@ -799,7 +799,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-verified"},
+					Policies: pq.StringArray{"istarget:verified"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -814,14 +814,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-prem"},
+					Policies: pq.StringArray{"istarget:prem"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"premium"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-prem",
+				"post1": "istarget:prem",
 			},
 			description: "Partial matches should not count - exact match required",
 		},
@@ -831,7 +831,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-vip_2024"},
+					Policies: pq.StringArray{"istarget:vip_2024"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -841,19 +841,19 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			description:        "Target attributes with underscores should work",
 		},
 		{
-			name:   "attribute with dash gets truncated",
+			name:   "attribute with dash in value",
 			userID: "user1",
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-vip-2024"},
+					Policies: pq.StringArray{"istarget:vip-2024"},
 				},
 			},
 			userAttrs: map[string][]string{
-				"user1": {"vip", "2024"},
+				"user1": {"vip-2024", "active"},
 			},
 			expectedViolations: map[string]string{},
-			description:        "Due to split on dash, 'istarget-vip-2024' only checks for 'vip'",
+			description:        "With colon separator, dashes in attribute value work correctly",
 		},
 		{
 			name:   "user not in attributes map",
@@ -861,14 +861,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user2": {"premium"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Post should be hidden when user not found in attributes map",
 		},
@@ -878,14 +878,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium", "istarget-verified"},
+					Policies: pq.StringArray{"istarget:premium", "istarget:verified"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"premium"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-verified",
+				"post1": "istarget:verified",
 			},
 			description: "First violation should be returned when multiple istarget policies exist",
 		},
@@ -895,14 +895,14 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+					Policies: pq.StringArray{"exposure:1000", "istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
 				"user1": {"basic"},
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Istarget policy should be evaluated after exposure if exposure passes",
 		},
@@ -912,7 +912,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-"},
+					Policies: pq.StringArray{"istarget:"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -977,7 +977,7 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 			},
 			resolver: &mockPolicyResolver{
@@ -993,11 +993,11 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 				"post2": {
 					FeedId:   "post2",
-					Policies: pq.StringArray{"istarget-verified"},
+					Policies: pq.StringArray{"istarget:verified"},
 				},
 			},
 			resolver: &mockPolicyResolver{
@@ -1046,7 +1046,7 @@ func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
 		policyMap := map[string]*model.Policy{
 			"post1": {
 				FeedId:   "post1",
-				Policies: pq.StringArray{"istarget-premium"},
+				Policies: pq.StringArray{"istarget:premium"},
 			},
 		}
 
@@ -1074,7 +1074,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+					Policies: pq.StringArray{"exposure:1000", "istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -1084,7 +1084,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": 500,
 			},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Should fail on istarget when exposure passes",
 		},
@@ -1094,7 +1094,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"exposure-1000", "istarget-premium"},
+					Policies: pq.StringArray{"exposure:1000", "istarget:premium"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -1104,7 +1104,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": 1500,
 			},
 			expectedViolations: map[string]string{
-				"post1": "exposure-1000",
+				"post1": "exposure:1000",
 			},
 			description: "Should fail on exposure and not check istarget",
 		},
@@ -1115,10 +1115,10 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": {
 					FeedId: "post1",
 					Policies: pq.StringArray{
-						"exposure-1000",
-						"istarget-premium",
-						"inexpose-" + strconv.FormatInt(now-3600, 10),
-						"unexpose-" + strconv.FormatInt(now+3600, 10),
+						"exposure:1000",
+						"istarget:premium",
+						"inexpose:" + strconv.FormatInt(now-3600, 10),
+						"unexpose:" + strconv.FormatInt(now+3600, 10),
 					},
 				},
 			},
@@ -1138,9 +1138,9 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post1": {
 					FeedId: "post1",
 					Policies: pq.StringArray{
-						"inexpose-" + strconv.FormatInt(now-3600, 10),
-						"istarget-premium",
-						"unexpose-" + strconv.FormatInt(now+3600, 10),
+						"inexpose:" + strconv.FormatInt(now-3600, 10),
+						"istarget:premium",
+						"unexpose:" + strconv.FormatInt(now+3600, 10),
 					},
 				},
 			},
@@ -1149,7 +1149,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 			},
 			viewCounts: map[string]int64{},
 			expectedViolations: map[string]string{
-				"post1": "istarget-premium",
+				"post1": "istarget:premium",
 			},
 			description: "Should evaluate istarget between time-based policies",
 		},
@@ -1159,15 +1159,15 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 			policyMap: map[string]*model.Policy{
 				"post1": {
 					FeedId:   "post1",
-					Policies: pq.StringArray{"istarget-premium"},
+					Policies: pq.StringArray{"istarget:premium"},
 				},
 				"post2": {
 					FeedId:   "post2",
-					Policies: pq.StringArray{"exposure-1000"},
+					Policies: pq.StringArray{"exposure:1000"},
 				},
 				"post3": {
 					FeedId:   "post3",
-					Policies: pq.StringArray{"istarget-verified", "exposure-500"},
+					Policies: pq.StringArray{"istarget:verified", "exposure:500"},
 				},
 			},
 			userAttrs: map[string][]string{
@@ -1178,8 +1178,8 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				"post3": 300,
 			},
 			expectedViolations: map[string]string{
-				"post2": "exposure-1000",
-				"post3": "istarget-verified",
+				"post2": "exposure:1000",
+				"post3": "istarget:verified",
 			},
 			description: "Each post should be evaluated independently",
 		},
