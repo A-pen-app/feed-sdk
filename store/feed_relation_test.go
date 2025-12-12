@@ -207,12 +207,12 @@ func TestGetRelatedFeeds(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name           string
-		feedID         string
-		mockRows       *sqlmock.Rows
-		mockError      error
-		expectedIDs    []string
-		expectedError  bool
+		name          string
+		feedID        string
+		mockRows      *sqlmock.Rows
+		mockError     error
+		expectedIDs   []string
+		expectedError bool
 	}{
 		{
 			name:   "successful query with multiple relations",
