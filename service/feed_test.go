@@ -66,6 +66,35 @@ func (m *mockStore) DeleteFeed(ctx context.Context, id string) error {
 	return m.deleteErr
 }
 
+// Mock relation store implementation
+type mockRelationStore struct {
+	relatedFeeds  map[string][]string
+	addErr        error
+	removeErr     error
+	getRelatedErr error
+}
+
+func (m *mockRelationStore) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
+	return m.addErr
+}
+
+func (m *mockRelationStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
+	return m.removeErr
+}
+
+func (m *mockRelationStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
+	if m.getRelatedErr != nil {
+		return nil, m.getRelatedErr
+	}
+	if m.relatedFeeds == nil {
+		return []string{}, nil
+	}
+	if feeds, exists := m.relatedFeeds[feedID]; exists {
+		return feeds, nil
+	}
+	return []string{}, nil
+}
+
 // Mock policy resolver
 type mockPolicyResolver struct {
 	viewCounts       map[string]int64
@@ -212,7 +241,7 @@ func TestGetFeeds(t *testing.T) {
 				policies:    tt.policies,
 				policiesErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			feeds, err := svc.GetFeeds(ctx, tt.input)
 
@@ -331,7 +360,7 @@ func TestGetPolicies(t *testing.T) {
 				policies:    tt.usedPolicies,
 				policiesErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			policies, err := svc.GetPolicies(ctx, tt.maxPositions)
 
@@ -389,7 +418,7 @@ func TestPatchFeed(t *testing.T) {
 			mockStore := &mockStore{
 				patchErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			err := svc.PatchFeed(ctx, tt.id, tt.feedType, tt.position)
 
@@ -433,7 +462,7 @@ func TestDeleteFeed(t *testing.T) {
 			mockStore := &mockStore{
 				deleteErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			err := svc.DeleteFeed(ctx, tt.id)
 
@@ -591,7 +620,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockStore := &mockStore{}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			violations := svc.BuildPolicyViolationMap(ctx, "test-user", tt.policyMap, tt.resolver)
 
@@ -679,7 +708,7 @@ func TestCheckPolicyViolation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockStore := &mockStore{}
-			svc := NewFeed[MockPost](mockStore)
+			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
 
 			violation := make(map[string]string)
 			svc.checkPolicyViolation(ctx, "test-user", tt.feedID, &violation, tt.policies, tt.resolver)
@@ -939,7 +968,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				userAttrsErr: nil,
 			}
 
-			service := NewFeed[MockPost](&mockStore{})
+			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1019,7 +1048,7 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewFeed[MockPost](&mockStore{})
+			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, tt.resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1058,7 +1087,7 @@ func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
 			},
 		}
 
-		service := NewFeed[MockPost](&mockStore{})
+		service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
 		_ = service.BuildPolicyViolationMap(ctx, "user1", policyMap, nil)
 	})
 }
@@ -1200,7 +1229,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				viewCounts: tt.viewCounts,
 			}
 
-			service := NewFeed[MockPost](&mockStore{})
+			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1216,6 +1245,80 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				} else if actualPolicy != expectedPolicy {
 					t.Errorf("%s: expected policy %s for post %s, got %s",
 						tt.description, expectedPolicy, postID, actualPolicy)
+				}
+			}
+		})
+	}
+}
+
+func TestGetRelatedFeeds(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		feedID        string
+		relatedFeeds  map[string][]string
+		getRelatedErr error
+		expectedIDs   []string
+		expectedError bool
+	}{
+		{
+			name:   "successful query with multiple relations",
+			feedID: "feed123",
+			relatedFeeds: map[string][]string{
+				"feed123": {"feed456", "feed789", "feed012"},
+			},
+			expectedIDs: []string{"feed456", "feed789", "feed012"},
+		},
+		{
+			name:        "empty result",
+			feedID:      "feed123",
+			expectedIDs: []string{},
+		},
+		{
+			name:          "store returns error",
+			feedID:        "feed123",
+			getRelatedErr: errors.New("database error"),
+			expectedError: true,
+		},
+		{
+			name:   "feed not in map returns empty",
+			feedID: "nonexistent",
+			relatedFeeds: map[string][]string{
+				"feed123": {"feed456"},
+			},
+			expectedIDs: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockRelStore := &mockRelationStore{
+				relatedFeeds:  tt.relatedFeeds,
+				getRelatedErr: tt.getRelatedErr,
+			}
+			svc := NewFeed[MockPost](&mockStore{}, mockRelStore)
+
+			relatedIDs, err := svc.GetRelatedFeeds(ctx, tt.feedID)
+
+			if tt.expectedError {
+				if err == nil {
+					t.Fatal("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(relatedIDs) != len(tt.expectedIDs) {
+				t.Fatalf("expected %d related IDs, got %d", len(tt.expectedIDs), len(relatedIDs))
+			}
+
+			for i, expectedID := range tt.expectedIDs {
+				if relatedIDs[i] != expectedID {
+					t.Errorf("at index %d: expected ID %s, got %s", i, expectedID, relatedIDs[i])
 				}
 			}
 		})

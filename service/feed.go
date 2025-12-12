@@ -7,20 +7,28 @@ import (
 	"github.com/A-pen-app/feed-sdk/model"
 )
 
-func NewFeed[T model.Scorable](s store) *Service[T] {
+func NewFeed[T model.Scorable](s store, rs relationStore) *Service[T] {
 	return &Service[T]{
-		store: s,
+		store:         s,
+		relationStore: rs,
 	}
 }
 
 type Service[T model.Scorable] struct {
-	store store
+	store         store
+	relationStore relationStore
 }
 
 type store interface {
 	GetPolicies(ctx context.Context) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
+}
+
+type relationStore interface {
+	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
+	RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error
+	GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error)
 }
 
 func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
@@ -121,4 +129,8 @@ func (f *Service[T]) checkPolicyViolation(ctx context.Context, userId, feedId st
 			return
 		}
 	}
+}
+
+func (s *Service[T]) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
+	return s.relationStore.GetRelatedFeeds(ctx, feedID)
 }
