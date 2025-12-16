@@ -2,7 +2,6 @@
 
 [![Tests](https://github.com/A-pen-app/feed-sdk/actions/workflows/test.yml/badge.svg)](https://github.com/A-pen-app/feed-sdk/actions/workflows/test.yml)
 [![Lint](https://github.com/A-pen-app/feed-sdk/actions/workflows/lint.yml/badge.svg)](https://github.com/A-pen-app/feed-sdk/actions/workflows/lint.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/A-pen-app/feed-sdk)](https://goreportcard.com/report/github.com/A-pen-app/feed-sdk)
 
 A Go SDK for managing content feeds with policy-based filtering and positioning.
 
@@ -19,6 +18,19 @@ go get github.com/A-pen-app/feed-sdk
 - Feed positioning and reordering
 - Policy violation detection to filter feeds
 - Database persistence for feed policies
+- Feed relations for linking related content
+- Auto-creation of database tables on initialization
+
+## Feed Types
+
+The SDK supports the following feed types:
+
+| Type | Constant | Description |
+|------|----------|-------------|
+| `post` | `model.TypePost` | Single post content |
+| `posts` | `model.TypePosts` | Collection of posts |
+| `banners` | `model.TypeBanners` | Banner content |
+| `chat` | `model.TypeChat` | Chat content |
 
 ## Usage
 
@@ -39,14 +51,15 @@ type Post struct {
     score float64
 }
 
-func (p Post) GetID() string           { return p.ID }
+func (p Post) GetID() string            { return p.ID }
 func (p Post) Feedtype() model.FeedType { return model.TypePost }
-func (p Post) Score() float64          { return p.score }
+func (p Post) Score() float64           { return p.score }
 
 // Initialize the service
 db := sqlx.MustConnect("postgres", "postgresql://user:pass@host/db")
-feedStore := store.NewFeed(db)
-feedService := service.NewFeed[Post](feedStore)
+feedStore := store.NewFeed(db)              // auto-creates feed table
+feedRelationStore := store.NewFeedRelation(db)  // auto-creates feed_relation table
+feedService := service.NewFeed[Post](feedStore, feedRelationStore)
 ```
 
 ### Get Sorted Feeds
@@ -72,6 +85,13 @@ positions, err := feedService.GetPolicies(ctx, 10)
 
 // Remove a feed from its position
 err := feedService.DeleteFeed(ctx, "post123")
+```
+
+### Feed Relations
+
+```go
+// Get related feeds for a given feed
+relatedFeedIDs, err := feedService.GetRelatedFeeds(ctx, "post123")
 ```
 
 ### Policy Enforcement
@@ -126,14 +146,32 @@ These are used as modifiers for the `exposure` policy:
 
 ## Database Schema
 
-The SDK expects a `feed` table:
+The SDK automatically creates the required tables on initialization. The schemas are:
+
+### Feed Table
 
 ```sql
-CREATE TABLE feed (
-    feed_id   VARCHAR PRIMARY KEY,
-    feed_type VARCHAR,
-    position  INTEGER,
-    policies  TEXT[] DEFAULT ARRAY[]::TEXT[]
+CREATE TABLE IF NOT EXISTS feed (
+    feed_id uuid NOT NULL,
+    position integer NOT NULL DEFAULT 0,
+    feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
+    policies character varying(50)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+    CONSTRAINT feed_pkey PRIMARY KEY (feed_id),
+    CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
+);
+```
+
+A trigger validates policy format on insert/update, ensuring policies match the pattern `{policy_type}:{params}`.
+
+### Feed Relation Table
+
+```sql
+CREATE TABLE IF NOT EXISTS feed_relation (
+    feed_id uuid NOT NULL,
+    related_feed_id uuid NOT NULL,
+    CONSTRAINT feed_relation_pkey PRIMARY KEY (feed_id, related_feed_id),
+    CONSTRAINT feed_relation_feed_id_fkey FOREIGN KEY (feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
+    CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
 );
 ```
 
@@ -165,7 +203,3 @@ This project uses GitHub Actions for continuous integration:
 - **Tests**: Automatically run on push to `main` and on pull requests
 - **Lint**: Code quality checks using golangci-lint
 - **Coverage**: Minimum 80% coverage required to pass
-
-## TODO
-
-- auto create feed table if not exist already
