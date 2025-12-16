@@ -45,10 +45,14 @@ func (m MockPost) Score() float64 {
 
 // Mock store implementation
 type mockStore struct {
-	policies    []model.Policy
-	policiesErr error
-	patchErr    error
-	deleteErr   error
+	policies      []model.Policy
+	policiesErr   error
+	patchErr      error
+	deleteErr     error
+	relatedFeeds  map[string][]string
+	addErr        error
+	removeErr     error
+	getRelatedErr error
 }
 
 func (m *mockStore) GetPolicies(ctx context.Context) ([]model.Policy, error) {
@@ -66,23 +70,15 @@ func (m *mockStore) DeleteFeed(ctx context.Context, id string) error {
 	return m.deleteErr
 }
 
-// Mock relation store implementation
-type mockRelationStore struct {
-	relatedFeeds  map[string][]string
-	addErr        error
-	removeErr     error
-	getRelatedErr error
-}
-
-func (m *mockRelationStore) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
+func (m *mockStore) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	return m.addErr
 }
 
-func (m *mockRelationStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
+func (m *mockStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	return m.removeErr
 }
 
-func (m *mockRelationStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
+func (m *mockStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
 	if m.getRelatedErr != nil {
 		return nil, m.getRelatedErr
 	}
@@ -241,7 +237,7 @@ func TestGetFeeds(t *testing.T) {
 				policies:    tt.policies,
 				policiesErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			feeds, err := svc.GetFeeds(ctx, tt.input)
 
@@ -360,7 +356,7 @@ func TestGetPolicies(t *testing.T) {
 				policies:    tt.usedPolicies,
 				policiesErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			policies, err := svc.GetPolicies(ctx, tt.maxPositions)
 
@@ -418,7 +414,7 @@ func TestPatchFeed(t *testing.T) {
 			mockStore := &mockStore{
 				patchErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			err := svc.PatchFeed(ctx, tt.id, tt.feedType, tt.position)
 
@@ -462,7 +458,7 @@ func TestDeleteFeed(t *testing.T) {
 			mockStore := &mockStore{
 				deleteErr: tt.storeErr,
 			}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			err := svc.DeleteFeed(ctx, tt.id)
 
@@ -620,7 +616,7 @@ func TestBuildPolicyViolationMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockStore := &mockStore{}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			violations := svc.BuildPolicyViolationMap(ctx, "test-user", tt.policyMap, tt.resolver)
 
@@ -708,7 +704,7 @@ func TestCheckPolicyViolation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockStore := &mockStore{}
-			svc := NewFeed[MockPost](mockStore, &mockRelationStore{})
+			svc := NewFeed[MockPost](mockStore)
 
 			violation := make(map[string]string)
 			svc.checkPolicyViolation(ctx, "test-user", tt.feedID, &violation, tt.policies, tt.resolver)
@@ -968,7 +964,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 				userAttrsErr: nil,
 			}
 
-			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
+			service := NewFeed[MockPost](&mockStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1048,7 +1044,7 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
+			service := NewFeed[MockPost](&mockStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, tt.resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1087,7 +1083,7 @@ func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
 			},
 		}
 
-		service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
+		service := NewFeed[MockPost](&mockStore{})
 		_ = service.BuildPolicyViolationMap(ctx, "user1", policyMap, nil)
 	})
 }
@@ -1229,7 +1225,7 @@ func TestBuildPolicyViolationMap_MixedPoliciesWithIstarget(t *testing.T) {
 				viewCounts: tt.viewCounts,
 			}
 
-			service := NewFeed[MockPost](&mockStore{}, &mockRelationStore{})
+			service := NewFeed[MockPost](&mockStore{})
 			violations := service.BuildPolicyViolationMap(ctx, tt.userID, tt.policyMap, resolver)
 
 			if len(violations) != len(tt.expectedViolations) {
@@ -1293,11 +1289,11 @@ func TestGetRelatedFeeds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRelStore := &mockRelationStore{
+			store := &mockStore{
 				relatedFeeds:  tt.relatedFeeds,
 				getRelatedErr: tt.getRelatedErr,
 			}
-			svc := NewFeed[MockPost](&mockStore{}, mockRelStore)
+			svc := NewFeed[MockPost](store)
 
 			relatedIDs, err := svc.GetRelatedFeeds(ctx, tt.feedID)
 

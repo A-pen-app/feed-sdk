@@ -57,9 +57,8 @@ func (p Post) Score() float64           { return p.score }
 
 // Initialize the service
 db := sqlx.MustConnect("postgres", "postgresql://user:pass@host/db")
-feedStore := store.NewFeed(db)              // auto-creates feed table
-feedRelationStore := store.NewFeedRelation(db)  // auto-creates feed_relation table
-feedService := service.NewFeed[Post](feedStore, feedRelationStore)
+feedStore := store.NewFeed(db)  // auto-creates feed and feed_relation tables
+feedService := service.NewFeed[Post](feedStore)
 ```
 
 ### Get Sorted Feeds

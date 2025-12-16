@@ -66,6 +66,10 @@ func NewFeed(db *sqlx.DB) *store {
 		panic("failed to add policy format constraint: " + err.Error())
 	}
 
+	if _, err := db.Exec(createFeedRelationTableSQL); err != nil {
+		panic("failed to create feed_relation table: " + err.Error())
+	}
+
 	return &store{
 		db: db,
 	}

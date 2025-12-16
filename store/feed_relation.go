@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-
-	"github.com/jmoiron/sqlx"
 )
 
 const createFeedRelationTableSQL = `
@@ -15,25 +13,7 @@ CREATE TABLE IF NOT EXISTS feed_relation (
 	CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
 )`
 
-func NewFeedRelation(db *sqlx.DB) *feedRelationStore {
-	if db == nil {
-		panic("database connection cannot be nil")
-	}
-
-	if _, err := db.Exec(createFeedRelationTableSQL); err != nil {
-		panic("failed to create feed_relation table: " + err.Error())
-	}
-
-	return &feedRelationStore{
-		db: db,
-	}
-}
-
-type feedRelationStore struct {
-	db *sqlx.DB
-}
-
-func (s *feedRelationStore) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
+func (s *store) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	_, err := s.db.NamedExecContext(ctx,
 		`
 		INSERT INTO feed_relation (feed_id, related_feed_id)
@@ -47,7 +27,7 @@ func (s *feedRelationStore) AddRelation(ctx context.Context, feedID, relatedFeed
 	return err
 }
 
-func (s *feedRelationStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
+func (s *store) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	_, err := s.db.NamedExecContext(ctx,
 		`
 		DELETE FROM feed_relation
@@ -60,7 +40,7 @@ func (s *feedRelationStore) RemoveRelation(ctx context.Context, feedID, relatedF
 	return err
 }
 
-func (s *feedRelationStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
+func (s *store) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
 	var relatedFeedIDs []string
 	err := s.db.SelectContext(ctx, &relatedFeedIDs,
 		`

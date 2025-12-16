@@ -5,76 +5,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/jmoiron/sqlx"
 )
-
-func newMockFeedRelationStore(t *testing.T) (*feedRelationStore, sqlmock.Sqlmock, func()) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to create mock db: %v", err)
-	}
-
-	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
-
-	sqlxDB := sqlx.NewDb(db, "postgres")
-	s := NewFeedRelation(sqlxDB)
-
-	return s, mock, func() { db.Close() }
-}
-
-func TestNewFeedRelation(t *testing.T) {
-	t.Run("panics with nil database", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic with nil database, but did not panic")
-			}
-		}()
-		NewFeedRelation(nil)
-	})
-
-	t.Run("creates store with valid database", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatalf("failed to create mock db: %v", err)
-		}
-		defer db.Close()
-
-		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
-
-		sqlxDB := sqlx.NewDb(db, "postgres")
-		store := NewFeedRelation(sqlxDB)
-
-		if store == nil {
-			t.Fatal("expected store to be created, got nil")
-		}
-		if store.db == nil {
-			t.Error("expected store.db to be set, got nil")
-		}
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unfulfilled expectations: %v", err)
-		}
-	})
-
-	t.Run("panics on migration error", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic on migration error, but did not panic")
-			}
-		}()
-
-		db, mock, err := sqlmock.New()
-		if err != nil {
-			t.Fatalf("failed to create mock db: %v", err)
-		}
-		defer db.Close()
-
-		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnError(sqlmock.ErrCancelled)
-
-		sqlxDB := sqlx.NewDb(db, "postgres")
-		NewFeedRelation(sqlxDB)
-	})
-}
 
 func TestAddRelation(t *testing.T) {
 	ctx := context.Background()
@@ -107,7 +38,7 @@ func TestAddRelation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, mock, cleanup := newMockFeedRelationStore(t)
+			store, mock, cleanup := newMockStore(t)
 			defer cleanup()
 
 			if tt.mockError != nil {
@@ -172,7 +103,7 @@ func TestRemoveRelation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, mock, cleanup := newMockFeedRelationStore(t)
+			store, mock, cleanup := newMockStore(t)
 			defer cleanup()
 
 			if tt.mockError != nil {
@@ -203,7 +134,7 @@ func TestRemoveRelation(t *testing.T) {
 	}
 }
 
-func TestGetRelatedFeeds(t *testing.T) {
+func TestGetRelatedFeedsStore(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -246,7 +177,7 @@ func TestGetRelatedFeeds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, mock, cleanup := newMockFeedRelationStore(t)
+			store, mock, cleanup := newMockStore(t)
 			defer cleanup()
 
 			if tt.mockError != nil {
