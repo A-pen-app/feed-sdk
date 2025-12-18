@@ -706,8 +706,10 @@ func TestCheckPolicyViolation(t *testing.T) {
 			mockStore := &mockStore{}
 			svc := NewFeed[MockPost](mockStore)
 
-			violation := make(map[string]string)
-			svc.checkPolicyViolation(ctx, "test-user", tt.feedID, &violation, tt.policies, tt.resolver)
+			policyMap := map[string]*model.Policy{
+				tt.feedID: {Policies: tt.policies},
+			}
+			violation := svc.BuildPolicyViolationMap(ctx, "test-user", policyMap, tt.resolver)
 
 			if tt.expectedViolation {
 				if _, exists := violation[tt.feedID]; !exists {
@@ -1067,15 +1069,8 @@ func TestBuildPolicyViolationMap_IstargetErrorHandling(t *testing.T) {
 func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
 	ctx := context.Background()
 
-	// Test that nil resolver causes panic for istarget policy
-	// This documents the current behavior - the code should ideally check for nil
-	t.Run("nil resolver causes panic", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected panic with nil resolver for istarget policy, but no panic occurred")
-			}
-		}()
-
+	// Test that nil resolver is handled gracefully (no panic, no violation recorded)
+	t.Run("nil resolver handled gracefully", func(t *testing.T) {
 		policyMap := map[string]*model.Policy{
 			"post1": {
 				FeedId:   "post1",
@@ -1084,7 +1079,12 @@ func TestBuildPolicyViolationMap_IstargetNilResolver(t *testing.T) {
 		}
 
 		service := NewFeed[MockPost](&mockStore{})
-		_ = service.BuildPolicyViolationMap(ctx, "user1", policyMap, nil)
+		result := service.BuildPolicyViolationMap(ctx, "user1", policyMap, nil)
+
+		// With nil resolver, the goroutine recovers from panic and returns no violation
+		if len(result) != 0 {
+			t.Errorf("expected no violations with nil resolver, got %v", result)
+		}
 	})
 }
 

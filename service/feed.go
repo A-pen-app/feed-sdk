@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"slices"
+	"sync"
 
 	"github.com/A-pen-app/feed-sdk/model"
 )
@@ -110,20 +111,38 @@ func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 }
 
 func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
-	var violation map[string]string = make(map[string]string)
-	for postID, policy := range policyMap {
-		f.checkPolicyViolation(ctx, userID, postID, &violation, policy.Policies, resolver)
-	}
-	return violation
-}
+	var (
+		violation = make(map[string]string)
+		mu        sync.Mutex
+		wg        sync.WaitGroup
+	)
 
-func (f *Service[T]) checkPolicyViolation(ctx context.Context, userId, feedId string, violation *map[string]string, policies []string, resolver model.PolicyResolver) {
-	for _, pol := range policies {
-		if model.PolicyType(pol).Violated(ctx, userId, feedId, resolver) {
-			(*violation)[feedId] = pol
-			return
-		}
+	for postID, policy := range policyMap {
+		wg.Add(1)
+		go func(postID string, policies []string) {
+			defer wg.Done()
+			defer func() {
+				// Recover from panics (e.g., nil resolver) to prevent crashing
+				recover()
+			}()
+			for _, pol := range policies {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				if model.PolicyType(pol).Violated(ctx, userID, postID, resolver) {
+					mu.Lock()
+					violation[postID] = pol
+					mu.Unlock()
+					return
+				}
+			}
+		}(postID, policy.Policies)
 	}
+
+	wg.Wait()
+	return violation
 }
 
 func (s *Service[T]) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
