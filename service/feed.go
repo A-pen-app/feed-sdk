@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/A-pen-app/feed-sdk/model"
+	"github.com/A-pen-app/logging"
 )
 
 func NewFeed[T model.Scorable](s store) *Service[T] {
@@ -122,8 +123,9 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 		go func(postID string, policies []string) {
 			defer wg.Done()
 			defer func() {
-				// Recover from panics (e.g., nil resolver) to prevent crashing
-				recover()
+				if r := recover(); r != nil {
+					logging.Errorw(ctx, "panic recovered in policy violation check", "post_id", postID, "error", r)
+				}
 			}()
 			for _, pol := range policies {
 				select {
