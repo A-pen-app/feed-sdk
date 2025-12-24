@@ -39,8 +39,6 @@ BEGIN
 	RETURNS TRIGGER AS $func$
 	DECLARE
 		change_type_val TEXT;
-		old_policy TEXT;
-		new_policy TEXT;
 	BEGIN
 		IF TG_OP = 'INSERT' THEN
 			INSERT INTO feed_changelog (feed_id, change_type, new_feed_type, new_position, new_policies)
@@ -51,31 +49,28 @@ BEGIN
 			VALUES (OLD.feed_id, 'DELETE', OLD.feed_type, OLD.position, OLD.policies);
 			RETURN OLD;
 		ELSIF TG_OP = 'UPDATE' THEN
-			-- Check if feed_type or position changed (general modification)
-			IF OLD.feed_type IS DISTINCT FROM NEW.feed_type OR OLD.position IS DISTINCT FROM NEW.position THEN
-				INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, new_feed_type, old_position, new_position, old_policies, new_policies)
-				VALUES (NEW.feed_id, 'UPDATE', OLD.feed_type, NEW.feed_type, OLD.position, NEW.position, OLD.policies, NEW.policies);
-			END IF;
-
-			-- Check for policy changes
-			IF OLD.policies IS DISTINCT FROM NEW.policies THEN
-				-- Determine the type of policy change
-				IF array_length(OLD.policies, 1) IS NULL AND array_length(NEW.policies, 1) > 0 THEN
-					change_type_val := 'POLICY_ADD';
-				ELSIF array_length(OLD.policies, 1) > 0 AND array_length(NEW.policies, 1) IS NULL THEN
-					change_type_val := 'POLICY_DELETE';
-				ELSIF array_length(COALESCE(OLD.policies, ARRAY[]::character varying[]), 1) < array_length(COALESCE(NEW.policies, ARRAY[]::character varying[]), 1) THEN
-					change_type_val := 'POLICY_ADD';
-				ELSIF array_length(COALESCE(OLD.policies, ARRAY[]::character varying[]), 1) > array_length(COALESCE(NEW.policies, ARRAY[]::character varying[]), 1) THEN
-					change_type_val := 'POLICY_DELETE';
+			-- Only log if something actually changed
+			IF OLD.feed_type IS DISTINCT FROM NEW.feed_type OR
+			   OLD.position IS DISTINCT FROM NEW.position OR
+			   OLD.policies IS DISTINCT FROM NEW.policies
+			THEN
+				-- Determine change type, prioritizing policy changes
+				IF OLD.policies IS DISTINCT FROM NEW.policies THEN
+					-- Use cardinality for cleaner array size comparison (returns 0 for empty arrays)
+					IF cardinality(NEW.policies) > cardinality(OLD.policies) THEN
+						change_type_val := 'POLICY_ADD';
+					ELSIF cardinality(NEW.policies) < cardinality(OLD.policies) THEN
+						change_type_val := 'POLICY_DELETE';
+					ELSE
+						change_type_val := 'POLICY_MODIFY';
+					END IF;
 				ELSE
-					change_type_val := 'POLICY_MODIFY';
+					change_type_val := 'UPDATE';
 				END IF;
 
 				INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, new_feed_type, old_position, new_position, old_policies, new_policies)
 				VALUES (NEW.feed_id, change_type_val, OLD.feed_type, NEW.feed_type, OLD.position, NEW.position, OLD.policies, NEW.policies);
 			END IF;
-
 			RETURN NEW;
 		END IF;
 		RETURN NULL;
