@@ -17,6 +17,82 @@ CREATE TABLE IF NOT EXISTS feed (
 	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 )`
 
+const createFeedChangelogTableSQL = `
+CREATE TABLE IF NOT EXISTS feed_changelog (
+	id SERIAL PRIMARY KEY,
+	feed_id uuid NOT NULL,
+	change_type character varying(20) NOT NULL,
+	old_feed_type character varying(20),
+	new_feed_type character varying(20),
+	old_position integer,
+	new_position integer,
+	old_policies character varying(50)[],
+	new_policies character varying(50)[],
+	changed_at timestamp with time zone NOT NULL DEFAULT NOW()
+)`
+
+const createFeedChangelogTriggerSQL = `
+DO $$
+BEGIN
+	-- Create or replace the changelog trigger function
+	CREATE OR REPLACE FUNCTION log_feed_changes()
+	RETURNS TRIGGER AS $func$
+	DECLARE
+		change_type_val TEXT;
+		old_policy TEXT;
+		new_policy TEXT;
+	BEGIN
+		IF TG_OP = 'INSERT' THEN
+			INSERT INTO feed_changelog (feed_id, change_type, new_feed_type, new_position, new_policies)
+			VALUES (NEW.feed_id, 'INSERT', NEW.feed_type, NEW.position, NEW.policies);
+			RETURN NEW;
+		ELSIF TG_OP = 'DELETE' THEN
+			INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, old_position, old_policies)
+			VALUES (OLD.feed_id, 'DELETE', OLD.feed_type, OLD.position, OLD.policies);
+			RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+			-- Check if feed_type or position changed (general modification)
+			IF OLD.feed_type IS DISTINCT FROM NEW.feed_type OR OLD.position IS DISTINCT FROM NEW.position THEN
+				INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, new_feed_type, old_position, new_position, old_policies, new_policies)
+				VALUES (NEW.feed_id, 'UPDATE', OLD.feed_type, NEW.feed_type, OLD.position, NEW.position, OLD.policies, NEW.policies);
+			END IF;
+
+			-- Check for policy changes
+			IF OLD.policies IS DISTINCT FROM NEW.policies THEN
+				-- Determine the type of policy change
+				IF array_length(OLD.policies, 1) IS NULL AND array_length(NEW.policies, 1) > 0 THEN
+					change_type_val := 'POLICY_ADD';
+				ELSIF array_length(OLD.policies, 1) > 0 AND array_length(NEW.policies, 1) IS NULL THEN
+					change_type_val := 'POLICY_DELETE';
+				ELSIF array_length(COALESCE(OLD.policies, ARRAY[]::character varying[]), 1) < array_length(COALESCE(NEW.policies, ARRAY[]::character varying[]), 1) THEN
+					change_type_val := 'POLICY_ADD';
+				ELSIF array_length(COALESCE(OLD.policies, ARRAY[]::character varying[]), 1) > array_length(COALESCE(NEW.policies, ARRAY[]::character varying[]), 1) THEN
+					change_type_val := 'POLICY_DELETE';
+				ELSE
+					change_type_val := 'POLICY_MODIFY';
+				END IF;
+
+				INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, new_feed_type, old_position, new_position, old_policies, new_policies)
+				VALUES (NEW.feed_id, change_type_val, OLD.feed_type, NEW.feed_type, OLD.position, NEW.position, OLD.policies, NEW.policies);
+			END IF;
+
+			RETURN NEW;
+		END IF;
+		RETURN NULL;
+	END;
+	$func$ LANGUAGE plpgsql;
+
+	-- Drop existing trigger if it exists
+	DROP TRIGGER IF EXISTS feed_changelog_trigger ON feed;
+
+	-- Create the trigger
+	CREATE TRIGGER feed_changelog_trigger
+		AFTER INSERT OR UPDATE OR DELETE ON feed
+		FOR EACH ROW
+		EXECUTE FUNCTION log_feed_changes();
+END $$;
+`
+
 // addPolicyFormatConstraintSQL creates a trigger function and trigger to validate policy format.
 // Policies must be colon-separated with a valid policy type prefix.
 // To update this constraint when adding new policy types:
@@ -68,6 +144,14 @@ func NewFeed(db *sqlx.DB) *store {
 
 	if _, err := db.Exec(createFeedRelationTableSQL); err != nil {
 		panic("failed to create feed_relation table: " + err.Error())
+	}
+
+	if _, err := db.Exec(createFeedChangelogTableSQL); err != nil {
+		panic("failed to create feed_changelog table: " + err.Error())
+	}
+
+	if _, err := db.Exec(createFeedChangelogTriggerSQL); err != nil {
+		panic("failed to create feed_changelog trigger: " + err.Error())
 	}
 
 	return &store{
