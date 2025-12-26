@@ -349,3 +349,227 @@ func TestGetPoliciesOrderBy(t *testing.T) {
 		t.Errorf("unfulfilled expectations: %v", err)
 	}
 }
+
+func TestFeedChangelogTableCreation(t *testing.T) {
+	t.Run("panics on changelog table creation error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic on changelog table creation error, but did not panic")
+			} else {
+				panicMsg := r.(string)
+				if panicMsg != "failed to create feed_changelog table: canceling query due to user request" {
+					t.Errorf("unexpected panic message: %s", panicMsg)
+				}
+			}
+		}()
+
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("failed to create mock db: %v", err)
+		}
+		defer db.Close()
+
+		// Feed table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Policy format constraint succeeds
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Feed relation table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Changelog table creation fails
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnError(sqlmock.ErrCancelled)
+
+		sqlxDB := sqlx.NewDb(db, "postgres")
+		NewFeed(sqlxDB)
+	})
+
+	t.Run("panics on changelog trigger creation error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic on changelog trigger creation error, but did not panic")
+			} else {
+				panicMsg := r.(string)
+				if panicMsg != "failed to create feed_changelog trigger: canceling query due to user request" {
+					t.Errorf("unexpected panic message: %s", panicMsg)
+				}
+			}
+		}()
+
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("failed to create mock db: %v", err)
+		}
+		defer db.Close()
+
+		// Feed table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Policy format constraint succeeds
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Feed relation table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Changelog table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Changelog trigger creation fails
+		mock.ExpectExec("DO \\$\\$").WillReturnError(sqlmock.ErrCancelled)
+
+		sqlxDB := sqlx.NewDb(db, "postgres")
+		NewFeed(sqlxDB)
+	})
+
+	t.Run("changelog table has correct schema", func(t *testing.T) {
+		// Verify the expected columns in the changelog table SQL
+		expectedColumns := []string{
+			"id SERIAL PRIMARY KEY",
+			"feed_id uuid NOT NULL",
+			"change_type character varying(20) NOT NULL",
+			"old_feed_type character varying(20)",
+			"new_feed_type character varying(20)",
+			"old_position integer",
+			"new_position integer",
+			"old_policies character varying(50)[]",
+			"new_policies character varying(50)[]",
+			"changed_at timestamp with time zone NOT NULL DEFAULT NOW()",
+		}
+
+		for _, col := range expectedColumns {
+			if !contains(createFeedChangelogTableSQL, col) {
+				t.Errorf("changelog table SQL missing expected column definition: %s", col)
+			}
+		}
+	})
+}
+
+func TestFeedChangelogTriggerLogic(t *testing.T) {
+	// These tests document the expected trigger behavior
+	// The trigger itself runs at the database level, so we verify the SQL content
+
+	t.Run("trigger handles INSERT operations", func(t *testing.T) {
+		expectedContent := []string{
+			"IF TG_OP = 'INSERT' THEN",
+			"INSERT INTO feed_changelog (feed_id, change_type, new_feed_type, new_position, new_policies)",
+			"VALUES (NEW.feed_id, 'INSERT', NEW.feed_type, NEW.position, NEW.policies)",
+		}
+
+		for _, content := range expectedContent {
+			if !contains(createFeedChangelogTriggerSQL, content) {
+				t.Errorf("trigger SQL missing INSERT handling: %s", content)
+			}
+		}
+	})
+
+	t.Run("trigger handles DELETE operations", func(t *testing.T) {
+		expectedContent := []string{
+			"ELSIF TG_OP = 'DELETE' THEN",
+			"INSERT INTO feed_changelog (feed_id, change_type, old_feed_type, old_position, old_policies)",
+			"VALUES (OLD.feed_id, 'DELETE', OLD.feed_type, OLD.position, OLD.policies)",
+		}
+
+		for _, content := range expectedContent {
+			if !contains(createFeedChangelogTriggerSQL, content) {
+				t.Errorf("trigger SQL missing DELETE handling: %s", content)
+			}
+		}
+	})
+
+	t.Run("trigger handles UPDATE operations with change detection", func(t *testing.T) {
+		expectedContent := []string{
+			"ELSIF TG_OP = 'UPDATE' THEN",
+			"OLD.feed_type IS DISTINCT FROM NEW.feed_type",
+			"OLD.position IS DISTINCT FROM NEW.position",
+			"OLD.policies IS DISTINCT FROM NEW.policies",
+		}
+
+		for _, content := range expectedContent {
+			if !contains(createFeedChangelogTriggerSQL, content) {
+				t.Errorf("trigger SQL missing UPDATE handling: %s", content)
+			}
+		}
+	})
+
+	t.Run("trigger detects policy additions", func(t *testing.T) {
+		expectedContent := []string{
+			"IF cardinality(NEW.policies) > cardinality(OLD.policies) THEN",
+			"change_type_val := 'POLICY_ADD'",
+		}
+
+		for _, content := range expectedContent {
+			if !contains(createFeedChangelogTriggerSQL, content) {
+				t.Errorf("trigger SQL missing POLICY_ADD detection: %s", content)
+			}
+		}
+	})
+
+	t.Run("trigger detects policy deletions", func(t *testing.T) {
+		expectedContent := []string{
+			"ELSIF cardinality(NEW.policies) < cardinality(OLD.policies) THEN",
+			"change_type_val := 'POLICY_DELETE'",
+		}
+
+		for _, content := range expectedContent {
+			if !contains(createFeedChangelogTriggerSQL, content) {
+				t.Errorf("trigger SQL missing POLICY_DELETE detection: %s", content)
+			}
+		}
+	})
+
+	t.Run("trigger detects policy modifications", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "change_type_val := 'POLICY_MODIFY'") {
+			t.Error("trigger SQL missing POLICY_MODIFY detection")
+		}
+	})
+
+	t.Run("trigger logs generic UPDATE for non-policy changes", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "change_type_val := 'UPDATE'") {
+			t.Error("trigger SQL missing generic UPDATE change type")
+		}
+	})
+
+	t.Run("trigger fires after INSERT, UPDATE, DELETE", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "AFTER INSERT OR UPDATE OR DELETE ON feed") {
+			t.Error("trigger should fire AFTER INSERT OR UPDATE OR DELETE")
+		}
+	})
+
+	t.Run("trigger executes for each row", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "FOR EACH ROW") {
+			t.Error("trigger should execute FOR EACH ROW")
+		}
+	})
+}
+
+func TestChangelogTriggerRecreation(t *testing.T) {
+	// Verify the trigger uses CREATE OR REPLACE and DROP IF EXISTS
+	// to ensure idempotent migrations
+
+	t.Run("trigger function uses CREATE OR REPLACE", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "CREATE OR REPLACE FUNCTION log_feed_changes()") {
+			t.Error("trigger should use CREATE OR REPLACE FUNCTION for idempotent migrations")
+		}
+	})
+
+	t.Run("old trigger is dropped before creation", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "DROP TRIGGER IF EXISTS feed_changelog_trigger ON feed") {
+			t.Error("trigger should drop existing trigger before creating new one")
+		}
+	})
+
+	t.Run("trigger creation uses correct name", func(t *testing.T) {
+		if !contains(createFeedChangelogTriggerSQL, "CREATE TRIGGER feed_changelog_trigger") {
+			t.Error("trigger should be named feed_changelog_trigger")
+		}
+	})
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && searchString(s, substr)))
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
