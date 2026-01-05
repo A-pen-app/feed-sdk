@@ -22,7 +22,14 @@ func (f Feeds[T]) Sort() {
 }
 
 func greater[T Scorable](a, b T) bool {
-	return a.Score() > b.Score()
+	if a.Score() == nil && b.Score() == nil {
+		return false
+	} else if a.Score() == nil {
+		return false
+	} else if b.Score() == nil {
+		return true
+	}
+	return *a.Score() > *b.Score()
 }
 
 type Feed[T Scorable] struct {
@@ -33,7 +40,7 @@ type Feed[T Scorable] struct {
 
 type Scorable interface {
 	Feedtype() FeedType
-	Score() float64
+	Score() *float64
 	GetID() string
 }
 
