@@ -425,8 +425,8 @@ func TestFeedChangelogTableCreation(t *testing.T) {
 			"new_feed_type character varying(20)",
 			"old_position integer",
 			"new_position integer",
-			"old_policies character varying(50)[]",
-			"new_policies character varying(50)[]",
+			"old_policies character varying(200)[]",
+			"new_policies character varying(200)[]",
 			"changed_at timestamp with time zone NOT NULL DEFAULT NOW()",
 		}
 
