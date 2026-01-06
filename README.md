@@ -154,13 +154,13 @@ CREATE TABLE IF NOT EXISTS feed (
     feed_id uuid NOT NULL,
     position integer NOT NULL DEFAULT 0,
     feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
-    policies character varying(50)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+    policies character varying(200)[] NOT NULL DEFAULT ARRAY[]::character varying[],
     CONSTRAINT feed_pkey PRIMARY KEY (feed_id),
     CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 );
 ```
 
-A trigger validates policy format on insert/update, ensuring policies match the pattern `{policy_type}:{params}`.
+A trigger validates policy format on insert/update, ensuring policies match the pattern `{policy_type}:{params}` where params can contain lowercase letters, numbers, colons, underscores, and hyphens.
 
 ### Feed Relation Table
 
@@ -173,6 +173,33 @@ CREATE TABLE IF NOT EXISTS feed_relation (
     CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
 );
 ```
+
+### Feed Changelog Table
+
+The SDK automatically tracks all changes to feeds in a changelog table:
+
+```sql
+CREATE TABLE IF NOT EXISTS feed_changelog (
+    id SERIAL PRIMARY KEY,
+    feed_id uuid NOT NULL,
+    change_type character varying(20) NOT NULL,
+    old_feed_type character varying(20),
+    new_feed_type character varying(20),
+    old_position integer,
+    new_position integer,
+    old_policies character varying(200)[],
+    new_policies character varying(200)[],
+    changed_at timestamp with time zone NOT NULL DEFAULT NOW()
+);
+```
+
+Change types tracked:
+- `INSERT` - New feed created
+- `DELETE` - Feed deleted
+- `UPDATE` - Feed type or position changed
+- `POLICY_ADD` - Policy added to feed
+- `POLICY_DELETE` - Policy removed from feed
+- `POLICY_MODIFY` - Policy modified (same count, different content)
 
 ## Testing
 
