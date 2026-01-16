@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS feed (
 	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 )`
 
+const createColdstartTableSQL = `
+CREATE TABLE IF NOT EXISTS feed_coldstart (
+	feed_id uuid NOT NULL,
+	position integer NOT NULL DEFAULT 0,
+	feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
+	CONSTRAINT feed_coldstart_pkey PRIMARY KEY (feed_id),
+	CONSTRAINT feed_coldstart_position_key UNIQUE (position) INCLUDE (position)
+)`
+
 const createFeedChangelogTableSQL = `
 CREATE TABLE IF NOT EXISTS feed_changelog (
 	id SERIAL PRIMARY KEY,
@@ -133,6 +142,10 @@ func NewFeed(db *sqlx.DB) *store {
 		panic("failed to create feed table: " + err.Error())
 	}
 
+	if _, err := db.Exec(createColdstartTableSQL); err != nil {
+		panic("failed to create feed_coldstart table: " + err.Error())
+	}
+
 	if _, err := db.Exec(addPolicyFormatConstraintSQL); err != nil {
 		panic("failed to add policy format constraint: " + err.Error())
 	}
@@ -173,6 +186,28 @@ func (f *store) GetPolicies(ctx context.Context) ([]model.Policy, error) {
 			feed
 		ORDER BY
 			feed.position ASC
+		`,
+	); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
+
+func (f *store) GetColdstart(ctx context.Context) ([]model.Policy, error) {
+	orders := []model.Policy{}
+
+	if err := f.db.Select(
+		&orders,
+		`
+		SELECT
+			feed_coldstart.feed_id,
+			feed_coldstart.feed_type,
+			feed_coldstart.position
+		FROM
+			feed_coldstart
+		ORDER BY
+			feed_coldstart.position ASC
 		`,
 	); err != nil {
 		return nil, err

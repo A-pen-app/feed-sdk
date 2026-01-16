@@ -17,6 +17,7 @@ func newMockStore(t *testing.T) (*store, sqlmock.Sqlmock, func()) {
 	}
 
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_coldstart").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
@@ -46,6 +47,7 @@ func TestNewFeed(t *testing.T) {
 		defer db.Close()
 
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_coldstart").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
@@ -371,6 +373,8 @@ func TestFeedChangelogTableCreation(t *testing.T) {
 
 		// Feed table creation succeeds
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Coldstart table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_coldstart").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Policy format constraint succeeds
 		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Feed relation table creation succeeds
@@ -402,6 +406,8 @@ func TestFeedChangelogTableCreation(t *testing.T) {
 
 		// Feed table creation succeeds
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Coldstart table creation succeeds
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_coldstart").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Policy format constraint succeeds
 		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Feed relation table creation succeeds

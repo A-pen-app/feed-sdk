@@ -62,6 +62,13 @@ func (m *mockStore) GetPolicies(ctx context.Context) ([]model.Policy, error) {
 	return m.policies, nil
 }
 
+func (m *mockStore) GetColdstart(ctx context.Context) ([]model.Policy, error) {
+	if m.policiesErr != nil {
+		return nil, m.policiesErr
+	}
+	return m.policies, nil
+}
+
 func (m *mockStore) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {
 	return m.patchErr
 }

@@ -21,6 +21,7 @@ type Service[T model.Scorable] struct {
 
 type store interface {
 	GetPolicies(ctx context.Context) ([]model.Policy, error)
+	GetColdstart(ctx context.Context) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
@@ -46,41 +47,45 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	// sort with scores
 	feeds.Sort()
 
+	var positions []model.Policy
+	var err error
+
 	if coldstart {
+		positions, err = f.store.GetColdstart(ctx)
 	} else {
-		positions, err := f.store.GetPolicies(ctx)
-		if err != nil {
-			return nil, err
+		positions, err = f.store.GetPolicies(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// create a position map to speed up the discovery of positioned feeds.
+	positionMap := make(map[string]int)
+	for _, position := range positions {
+		positionMap[position.FeedId] = position.Position
+	}
+
+	// create a position->feed map
+	positionedFeedMap := make(map[int]model.Feed[T])
+
+	nonPositionedFeeds := feeds[:0]
+	for i := 0; i < len(feeds); i++ {
+		if v, exists := positionMap[feeds[i].ID]; exists {
+			// if the feed is positioned, put it into map
+			positionedFeedMap[v] = feeds[i]
+		} else {
+			// collect it otherwise
+			nonPositionedFeeds = append(nonPositionedFeeds, feeds[i])
 		}
+	}
+	feeds = nonPositionedFeeds
 
-		// create a position map to speed up the discovery of positioned feeds.
-		positionMap := make(map[string]int)
-		for _, position := range positions {
-			positionMap[position.FeedId] = position.Position
-		}
-
-		// create a position->feed map
-		positionedFeedMap := make(map[int]model.Feed[T])
-
-		nonPositionedFeeds := feeds[:0]
-		for i := 0; i < len(feeds); i++ {
-			if v, exists := positionMap[feeds[i].ID]; exists {
-				// if the feed is positioned, put it into map
-				positionedFeedMap[v] = feeds[i]
+	for _, p := range positions {
+		if feed, exist := positionedFeedMap[p.Position]; exist {
+			if len(feeds) < p.Position {
+				feeds = append(feeds, feed)
 			} else {
-				// collect it otherwise
-				nonPositionedFeeds = append(nonPositionedFeeds, feeds[i])
-			}
-		}
-		feeds = nonPositionedFeeds
-
-		for _, p := range positions {
-			if feed, exist := positionedFeedMap[p.Position]; exist {
-				if len(feeds) < p.Position {
-					feeds = append(feeds, feed)
-				} else {
-					feeds = slices.Insert(feeds, p.Position, feed)
-				}
+				feeds = slices.Insert(feeds, p.Position, feed)
 			}
 		}
 	}
