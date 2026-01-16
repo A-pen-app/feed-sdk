@@ -29,7 +29,7 @@ type store interface {
 }
 
 func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
-	coldstart, _ := ctx.Value("coldstart").(bool)
+	coldstart, _ := ctx.Value(model.COLD_START_KEY).(bool)
 
 	feeds := model.Feeds[T]{}
 	for i := range data {

@@ -13,6 +13,10 @@ import (
 	"github.com/lib/pq"
 )
 
+type contextKey string
+
+const COLD_START_KEY contextKey = "coldstart"
+
 type Feeds[T Scorable] []Feed[T]
 
 func (f Feeds[T]) Sort() {
