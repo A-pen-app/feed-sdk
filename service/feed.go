@@ -150,6 +150,10 @@ func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model
 	return positions, nil
 }
 
+func (f *Service[T]) GetColdstartPolicies(ctx context.Context) ([]model.Policy, error) {
+	return f.store.GetColdstart(ctx)
+}
+
 func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {
 	return s.store.PatchFeed(ctx, id, feedtype, position)
 }
