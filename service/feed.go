@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"math/rand"
 	"slices"
+	"sort"
 	"sync"
 
 	"github.com/A-pen-app/feed-sdk/model"
@@ -52,40 +54,74 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 
 	if coldstart {
 		positions, err = f.store.GetColdstart(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Select at most 5 coldstart feed IDs
+		if len(positions) > 5 {
+			rand.Shuffle(len(positions), func(i, j int) {
+				positions[i], positions[j] = positions[j], positions[i]
+			})
+			positions = positions[:5]
+		}
+
+		// Build set of coldstart feed IDs
+		coldstartIDs := make(map[string]bool)
+		for _, p := range positions {
+			coldstartIDs[p.FeedId] = true
+		}
+
+		// Remove coldstart feeds from list
+		var coldstartFeeds []model.Feed[T]
+		feeds = slices.DeleteFunc(feeds, func(feed model.Feed[T]) bool {
+			if coldstartIDs[feed.ID] {
+				coldstartFeeds = append(coldstartFeeds, feed)
+				return true
+			}
+			return false
+		})
+
+		// Insert at random positions in first 10
+		randomPositions := rand.Perm(10)[:len(coldstartFeeds)]
+		sort.Ints(randomPositions)
+		for i, pos := range randomPositions {
+			feeds = slices.Insert(feeds, pos, coldstartFeeds[i])
+		}
 	} else {
 		positions, err = f.store.GetPolicies(ctx)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// create a position map to speed up the discovery of positioned feeds.
-	positionMap := make(map[string]int)
-	for _, position := range positions {
-		positionMap[position.FeedId] = position.Position
-	}
-
-	// create a position->feed map
-	positionedFeedMap := make(map[int]model.Feed[T])
-
-	nonPositionedFeeds := feeds[:0]
-	for i := 0; i < len(feeds); i++ {
-		if v, exists := positionMap[feeds[i].ID]; exists {
-			// if the feed is positioned, put it into map
-			positionedFeedMap[v] = feeds[i]
-		} else {
-			// collect it otherwise
-			nonPositionedFeeds = append(nonPositionedFeeds, feeds[i])
+		if err != nil {
+			return nil, err
 		}
-	}
-	feeds = nonPositionedFeeds
 
-	for _, p := range positions {
-		if feed, exist := positionedFeedMap[p.Position]; exist {
-			if len(feeds) < p.Position {
-				feeds = append(feeds, feed)
+		// create a position map to speed up the discovery of positioned feeds.
+		positionMap := make(map[string]int)
+		for _, position := range positions {
+			positionMap[position.FeedId] = position.Position
+		}
+
+		// create a position->feed map
+		positionedFeedMap := make(map[int]model.Feed[T])
+
+		nonPositionedFeeds := feeds[:0]
+		for i := 0; i < len(feeds); i++ {
+			if v, exists := positionMap[feeds[i].ID]; exists {
+				// if the feed is positioned, put it into map
+				positionedFeedMap[v] = feeds[i]
 			} else {
-				feeds = slices.Insert(feeds, p.Position, feed)
+				// collect it otherwise
+				nonPositionedFeeds = append(nonPositionedFeeds, feeds[i])
+			}
+		}
+		feeds = nonPositionedFeeds
+
+		for _, p := range positions {
+			if feed, exist := positionedFeedMap[p.Position]; exist {
+				if len(feeds) < p.Position {
+					feeds = append(feeds, feed)
+				} else {
+					feeds = slices.Insert(feeds, p.Position, feed)
+				}
 			}
 		}
 	}
