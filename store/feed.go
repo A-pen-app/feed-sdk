@@ -2,6 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/csv"
+	"fmt"
+	"os"
 
 	"github.com/A-pen-app/feed-sdk/model"
 	"github.com/jmoiron/sqlx"
@@ -250,12 +253,77 @@ func (f *store) DeleteFeed(ctx context.Context, id string) error {
 	_, err := f.db.NamedExec(
 		`
 		DELETE FROM
-			feed 
-		WHERE 
+			feed
+		WHERE
 			feed_id=:feed_id
 		`,
 		map[string]interface{}{
 			"feed_id": id,
 		})
 	return err
+}
+
+// LoadColdstartFromCSV reads a CSV file and loads feed IDs into the feed_coldstart table.
+// The CSV is expected to have a header row, with the first column containing UUIDs.
+// Each row is inserted with feed_type='post' and an incremental position starting from 0.
+func (f *store) LoadColdstartFromCSV(ctx context.Context, filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open CSV file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	// Skip header row
+	if _, err := reader.Read(); err != nil {
+		return fmt.Errorf("failed to read CSV header: %w", err)
+	}
+
+	records, err := reader.ReadAll()
+	if err != nil {
+		return fmt.Errorf("failed to read CSV records: %w", err)
+	}
+
+	// Use a transaction for atomicity
+	tx, err := f.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Clear existing coldstart data
+	if _, err := tx.ExecContext(ctx, "DELETE FROM feed_coldstart"); err != nil {
+		return fmt.Errorf("failed to clear existing coldstart data: %w", err)
+	}
+
+	// Insert each record with incremental position
+	for position, record := range records {
+		if len(record) == 0 {
+			continue
+		}
+
+		feedID := record[0]
+		if feedID == "" {
+			continue
+		}
+
+		_, err := tx.NamedExecContext(ctx,
+			`INSERT INTO feed_coldstart (feed_id, feed_type, position)
+			 VALUES (:feed_id, :feed_type, :position)`,
+			map[string]interface{}{
+				"feed_id":   feedID,
+				"feed_type": model.TypePost,
+				"position":  position,
+			})
+		if err != nil {
+			return fmt.Errorf("failed to insert feed_id %s at position %d: %w", feedID, position, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
