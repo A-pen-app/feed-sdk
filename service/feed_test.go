@@ -236,6 +236,97 @@ func TestGetFeeds(t *testing.T) {
 			policies:    []model.Policy{},
 			expectedIDs: []string{},
 		},
+		// TypePosts specific tests
+		{
+			name: "TypePosts basic sorting without policies",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 40.0},
+				{id: "posts2", feedType: model.TypePosts, score: 90.0},
+				{id: "posts3", feedType: model.TypePosts, score: 65.0},
+			},
+			policies:    []model.Policy{},
+			expectedIDs: []string{"posts2", "posts3", "posts1"},
+		},
+		{
+			name: "TypePosts positioning at index 0",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 40.0},
+				{id: "posts2", feedType: model.TypePosts, score: 90.0},
+				{id: "posts3", feedType: model.TypePosts, score: 65.0},
+			},
+			policies: []model.Policy{
+				{FeedId: "posts1", FeedType: model.TypePosts, Position: 0},
+			},
+			expectedIDs: []string{"posts1", "posts2", "posts3"},
+		},
+		{
+			name: "TypePosts positioning in middle",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 40.0},
+				{id: "posts2", feedType: model.TypePosts, score: 90.0},
+				{id: "posts3", feedType: model.TypePosts, score: 65.0},
+			},
+			policies: []model.Policy{
+				{FeedId: "posts1", FeedType: model.TypePosts, Position: 1},
+			},
+			expectedIDs: []string{"posts2", "posts1", "posts3"},
+		},
+		{
+			name: "TypePosts multiple positioned feeds",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 40.0},
+				{id: "posts2", feedType: model.TypePosts, score: 90.0},
+				{id: "posts3", feedType: model.TypePosts, score: 65.0},
+				{id: "posts4", feedType: model.TypePosts, score: 55.0},
+			},
+			policies: []model.Policy{
+				{FeedId: "posts1", FeedType: model.TypePosts, Position: 0},
+				{FeedId: "posts4", FeedType: model.TypePosts, Position: 2},
+			},
+			expectedIDs: []string{"posts1", "posts2", "posts4", "posts3"},
+		},
+		{
+			name: "mixed TypePost and TypePosts sorting",
+			input: []MockPost{
+				{id: "post1", feedType: model.TypePost, score: 50.0},
+				{id: "posts1", feedType: model.TypePosts, score: 80.0},
+				{id: "post2", feedType: model.TypePost, score: 70.0},
+				{id: "posts2", feedType: model.TypePosts, score: 60.0},
+			},
+			policies:    []model.Policy{},
+			expectedIDs: []string{"posts1", "post2", "posts2", "post1"},
+		},
+		{
+			name: "mixed types with positioning",
+			input: []MockPost{
+				{id: "post1", feedType: model.TypePost, score: 50.0},
+				{id: "posts1", feedType: model.TypePosts, score: 80.0},
+				{id: "banner1", feedType: model.TypeBanners, score: 70.0},
+				{id: "chat1", feedType: model.TypeChat, score: 60.0},
+			},
+			policies: []model.Policy{
+				{FeedId: "chat1", FeedType: model.TypeChat, Position: 0},
+			},
+			expectedIDs: []string{"chat1", "posts1", "banner1", "post1"},
+		},
+		{
+			name: "TypePosts single feed",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 100.0},
+			},
+			policies:    []model.Policy{},
+			expectedIDs: []string{"posts1"},
+		},
+		{
+			name: "TypePosts with equal scores",
+			input: []MockPost{
+				{id: "posts1", feedType: model.TypePosts, score: 50.0},
+				{id: "posts2", feedType: model.TypePosts, score: 50.0},
+				{id: "posts3", feedType: model.TypePosts, score: 50.0},
+			},
+			policies:    []model.Policy{},
+			expectedIDs: []string{"posts1", "posts2", "posts3"},
+		},
 	}
 
 	for _, tt := range tests {

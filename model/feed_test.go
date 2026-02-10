@@ -139,6 +139,50 @@ func TestFeedsSort(t *testing.T) {
 			},
 			expected: []string{"post3", "post2", "post1"},
 		},
+		{
+			name: "sort TypePosts feeds by score descending",
+			input: Feeds[MockPost]{
+				{ID: "posts1", Type: TypePosts, Data: MockPost{id: "posts1", feedType: TypePosts, score: 30.0}},
+				{ID: "posts2", Type: TypePosts, Data: MockPost{id: "posts2", feedType: TypePosts, score: 90.0}},
+				{ID: "posts3", Type: TypePosts, Data: MockPost{id: "posts3", feedType: TypePosts, score: 60.0}},
+			},
+			expected: []string{"posts2", "posts3", "posts1"},
+		},
+		{
+			name: "sort mixed feed types by score",
+			input: Feeds[MockPost]{
+				{ID: "post1", Type: TypePost, Data: MockPost{id: "post1", feedType: TypePost, score: 50.0}},
+				{ID: "posts1", Type: TypePosts, Data: MockPost{id: "posts1", feedType: TypePosts, score: 80.0}},
+				{ID: "banner1", Type: TypeBanners, Data: MockPost{id: "banner1", feedType: TypeBanners, score: 70.0}},
+				{ID: "chat1", Type: TypeChat, Data: MockPost{id: "chat1", feedType: TypeChat, score: 90.0}},
+			},
+			expected: []string{"chat1", "posts1", "banner1", "post1"},
+		},
+		{
+			name: "sort TypePosts with equal scores maintains stable order",
+			input: Feeds[MockPost]{
+				{ID: "posts1", Type: TypePosts, Data: MockPost{id: "posts1", feedType: TypePosts, score: 75.0}},
+				{ID: "posts2", Type: TypePosts, Data: MockPost{id: "posts2", feedType: TypePosts, score: 75.0}},
+				{ID: "posts3", Type: TypePosts, Data: MockPost{id: "posts3", feedType: TypePosts, score: 75.0}},
+			},
+			expected: []string{"posts1", "posts2", "posts3"},
+		},
+		{
+			name: "single TypePosts feed",
+			input: Feeds[MockPost]{
+				{ID: "posts1", Type: TypePosts, Data: MockPost{id: "posts1", feedType: TypePosts, score: 100.0}},
+			},
+			expected: []string{"posts1"},
+		},
+		{
+			name: "TypePosts with zero and negative scores",
+			input: Feeds[MockPost]{
+				{ID: "posts1", Type: TypePosts, Data: MockPost{id: "posts1", feedType: TypePosts, score: -5.0}},
+				{ID: "posts2", Type: TypePosts, Data: MockPost{id: "posts2", feedType: TypePosts, score: 0.0}},
+				{ID: "posts3", Type: TypePosts, Data: MockPost{id: "posts3", feedType: TypePosts, score: 5.0}},
+			},
+			expected: []string{"posts3", "posts2", "posts1"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -208,6 +252,7 @@ func TestFeedTypeConstants(t *testing.T) {
 		expected string
 	}{
 		{"post type", TypePost, "post"},
+		{"posts type", TypePosts, "posts"},
 		{"banners type", TypeBanners, "banners"},
 		{"chat type", TypeChat, "chat"},
 	}
@@ -242,51 +287,157 @@ func TestPolicyTypeConstants(t *testing.T) {
 }
 
 func TestPolicyStruct(t *testing.T) {
-	policy := Policy{
-		FeedId:   "feed123",
-		FeedType: TypePost,
-		Position: 5,
-		Policies: pq.StringArray{"exposure-1000", "inexpose-1234567890"},
+	tests := []struct {
+		name           string
+		feedId         string
+		feedType       FeedType
+		position       int
+		policies       pq.StringArray
+		expectedLength int
+	}{
+		{
+			name:           "policy with TypePost",
+			feedId:         "feed123",
+			feedType:       TypePost,
+			position:       5,
+			policies:       pq.StringArray{"exposure:1000", "inexpose:1234567890"},
+			expectedLength: 2,
+		},
+		{
+			name:           "policy with TypePosts",
+			feedId:         "feed456",
+			feedType:       TypePosts,
+			position:       0,
+			policies:       pq.StringArray{"exposure:500"},
+			expectedLength: 1,
+		},
+		{
+			name:           "policy with TypePosts and multiple policies",
+			feedId:         "feed789",
+			feedType:       TypePosts,
+			position:       3,
+			policies:       pq.StringArray{"exposure:1000", "inexpose:1234567890", "unexpose:9999999999"},
+			expectedLength: 3,
+		},
+		{
+			name:           "policy with TypePosts and no policies",
+			feedId:         "feed012",
+			feedType:       TypePosts,
+			position:       10,
+			policies:       pq.StringArray{},
+			expectedLength: 0,
+		},
+		{
+			name:           "policy with TypeBanners",
+			feedId:         "banner123",
+			feedType:       TypeBanners,
+			position:       1,
+			policies:       pq.StringArray{"istarget:premium"},
+			expectedLength: 1,
+		},
+		{
+			name:           "policy with TypeChat",
+			feedId:         "chat123",
+			feedType:       TypeChat,
+			position:       2,
+			policies:       pq.StringArray{"exposure:100", "istarget:verified"},
+			expectedLength: 2,
+		},
 	}
 
-	if policy.FeedId != "feed123" {
-		t.Errorf("expected FeedId 'feed123', got '%s'", policy.FeedId)
-	}
-	if policy.FeedType != TypePost {
-		t.Errorf("expected FeedType 'post', got '%s'", policy.FeedType)
-	}
-	if policy.Position != 5 {
-		t.Errorf("expected Position 5, got %d", policy.Position)
-	}
-	if len(policy.Policies) != 2 {
-		t.Errorf("expected 2 policies, got %d", len(policy.Policies))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := Policy{
+				FeedId:   tt.feedId,
+				FeedType: tt.feedType,
+				Position: tt.position,
+				Policies: tt.policies,
+			}
+
+			if policy.FeedId != tt.feedId {
+				t.Errorf("expected FeedId '%s', got '%s'", tt.feedId, policy.FeedId)
+			}
+			if policy.FeedType != tt.feedType {
+				t.Errorf("expected FeedType '%s', got '%s'", tt.feedType, policy.FeedType)
+			}
+			if policy.Position != tt.position {
+				t.Errorf("expected Position %d, got %d", tt.position, policy.Position)
+			}
+			if len(policy.Policies) != tt.expectedLength {
+				t.Errorf("expected %d policies, got %d", tt.expectedLength, len(policy.Policies))
+			}
+		})
 	}
 }
 
 func TestFeedStruct(t *testing.T) {
-	mockData := MockPost{
-		id:       "data123",
-		feedType: TypePost,
-		score:    100.0,
+	tests := []struct {
+		name         string
+		id           string
+		feedType     FeedType
+		dataID       string
+		score        float64
+	}{
+		{
+			name:     "feed with TypePost",
+			id:       "feed123",
+			feedType: TypePost,
+			dataID:   "data123",
+			score:    100.0,
+		},
+		{
+			name:     "feed with TypePosts",
+			id:       "feed456",
+			feedType: TypePosts,
+			dataID:   "data456",
+			score:    85.5,
+		},
+		{
+			name:     "feed with TypeBanners",
+			id:       "feed789",
+			feedType: TypeBanners,
+			dataID:   "data789",
+			score:    50.0,
+		},
+		{
+			name:     "feed with TypeChat",
+			id:       "feed012",
+			feedType: TypeChat,
+			dataID:   "data012",
+			score:    75.0,
+		},
 	}
 
-	feed := Feed[MockPost]{
-		ID:   "feed123",
-		Type: TypePost,
-		Data: mockData,
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockData := MockPost{
+				id:       tt.dataID,
+				feedType: tt.feedType,
+				score:    tt.score,
+			}
 
-	if feed.ID != "feed123" {
-		t.Errorf("expected ID 'feed123', got '%s'", feed.ID)
-	}
-	if feed.Type != TypePost {
-		t.Errorf("expected Type 'post', got '%s'", feed.Type)
-	}
-	if feed.Data.GetID() != "data123" {
-		t.Errorf("expected Data ID 'data123', got '%s'", feed.Data.GetID())
-	}
-	if feed.Data.Score() != 100.0 {
-		t.Errorf("expected Data Score 100.0, got %f", feed.Data.Score())
+			feed := Feed[MockPost]{
+				ID:   tt.id,
+				Type: tt.feedType,
+				Data: mockData,
+			}
+
+			if feed.ID != tt.id {
+				t.Errorf("expected ID '%s', got '%s'", tt.id, feed.ID)
+			}
+			if feed.Type != tt.feedType {
+				t.Errorf("expected Type '%s', got '%s'", tt.feedType, feed.Type)
+			}
+			if feed.Data.GetID() != tt.dataID {
+				t.Errorf("expected Data ID '%s', got '%s'", tt.dataID, feed.Data.GetID())
+			}
+			if feed.Data.Feedtype() != tt.feedType {
+				t.Errorf("expected Data Feedtype '%s', got '%s'", tt.feedType, feed.Data.Feedtype())
+			}
+			if feed.Data.Score() != tt.score {
+				t.Errorf("expected Data Score %f, got %f", tt.score, feed.Data.Score())
+			}
+		})
 	}
 }
 
