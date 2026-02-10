@@ -26,9 +26,9 @@ type store interface {
 	GetColdstart(ctx context.Context) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
-	AddRelation(ctx context.Context, feedID, relatedFeedID string, feedType model.FeedType, position int) error
+	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
 	RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error
-	GetRelatedFeeds(ctx context.Context) (map[string][]string, error)
+	GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error)
 }
 
 func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
@@ -198,6 +198,6 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 	return violation
 }
 
-func (s *Service[T]) GetRelatedFeeds(ctx context.Context) (map[string][]string, error) {
-	return s.store.GetRelatedFeeds(ctx)
+func (s *Service[T]) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
+	return s.store.GetRelatedFeeds(ctx, feedID)
 }

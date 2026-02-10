@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/A-pen-app/feed-sdk/model"
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
@@ -15,8 +14,6 @@ func TestAddRelation(t *testing.T) {
 		name          string
 		feedID        string
 		relatedFeedID string
-		feedType      string
-		position      int
 		mockError     error
 		expectedError bool
 	}{
@@ -24,22 +21,16 @@ func TestAddRelation(t *testing.T) {
 			name:          "successful insert",
 			feedID:        "feed123",
 			relatedFeedID: "feed456",
-			feedType:      "post",
-			position:      0,
 		},
 		{
 			name:          "insert with same IDs (self-relation)",
 			feedID:        "feed123",
 			relatedFeedID: "feed123",
-			feedType:      "banners",
-			position:      1,
 		},
 		{
 			name:          "database error",
 			feedID:        "feed789",
 			relatedFeedID: "feed012",
-			feedType:      "post",
-			position:      2,
 			mockError:     sqlmock.ErrCancelled,
 			expectedError: true,
 		},
@@ -54,11 +45,11 @@ func TestAddRelation(t *testing.T) {
 				mock.ExpectExec("INSERT INTO feed_relation").WillReturnError(tt.mockError)
 			} else {
 				mock.ExpectExec("INSERT INTO feed_relation").
-					WithArgs(tt.feedID, tt.relatedFeedID, tt.feedType, tt.position, tt.feedType, tt.position).
+					WithArgs(tt.feedID, tt.relatedFeedID).
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			}
 
-			err := store.AddRelation(ctx, tt.feedID, tt.relatedFeedID, model.FeedType(tt.feedType), tt.position)
+			err := store.AddRelation(ctx, tt.feedID, tt.relatedFeedID)
 
 			if tt.expectedError {
 				if err == nil {
@@ -148,40 +139,39 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 
 	tests := []struct {
 		name          string
+		feedID        string
 		mockRows      *sqlmock.Rows
 		mockError     error
-		expectedMap   map[string][]string
+		expectedIDs   []string
 		expectedError bool
 	}{
 		{
-			name: "successful query with multiple relations",
-			mockRows: sqlmock.NewRows([]string{"feed_id", "related_feed_id"}).
-				AddRow("feed123", "feed456").
-				AddRow("feed123", "feed789").
-				AddRow("feed123", "feed012").
-				AddRow("feed456", "feed123"),
-			expectedMap: map[string][]string{
-				"feed123": {"feed456", "feed789", "feed012"},
-				"feed456": {"feed123"},
-			},
+			name:   "successful query with multiple relations",
+			feedID: "feed123",
+			mockRows: sqlmock.NewRows([]string{"related_feed_id"}).
+				AddRow("feed456").
+				AddRow("feed789").
+				AddRow("feed012"),
+			expectedIDs: []string{"feed456", "feed789", "feed012"},
 		},
 		{
 			name:        "empty result set",
-			mockRows:    sqlmock.NewRows([]string{"feed_id", "related_feed_id"}),
-			expectedMap: map[string][]string{},
+			feedID:      "feed123",
+			mockRows:    sqlmock.NewRows([]string{"related_feed_id"}),
+			expectedIDs: []string{},
 		},
 		{
 			name:          "database error",
+			feedID:        "feed123",
 			mockError:     sqlmock.ErrCancelled,
 			expectedError: true,
 		},
 		{
-			name: "single relation",
-			mockRows: sqlmock.NewRows([]string{"feed_id", "related_feed_id"}).
-				AddRow("feed123", "feed456"),
-			expectedMap: map[string][]string{
-				"feed123": {"feed456"},
-			},
+			name:   "single relation",
+			feedID: "feed123",
+			mockRows: sqlmock.NewRows([]string{"related_feed_id"}).
+				AddRow("feed456"),
+			expectedIDs: []string{"feed456"},
 		},
 	}
 
@@ -191,14 +181,16 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 			defer cleanup()
 
 			if tt.mockError != nil {
-				mock.ExpectQuery("SELECT feed_id, related_feed_id FROM feed_relation").
+				mock.ExpectQuery("SELECT related_feed_id FROM feed_relation").
+					WithArgs(tt.feedID).
 					WillReturnError(tt.mockError)
 			} else {
-				mock.ExpectQuery("SELECT feed_id, related_feed_id FROM feed_relation").
+				mock.ExpectQuery("SELECT related_feed_id FROM feed_relation").
+					WithArgs(tt.feedID).
 					WillReturnRows(tt.mockRows)
 			}
 
-			relatedMap, err := store.GetRelatedFeeds(ctx)
+			relatedIDs, err := store.GetRelatedFeeds(ctx, tt.feedID)
 
 			if tt.expectedError {
 				if err == nil {
@@ -211,24 +203,13 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if len(relatedMap) != len(tt.expectedMap) {
-				t.Fatalf("expected %d keys, got %d", len(tt.expectedMap), len(relatedMap))
+			if len(relatedIDs) != len(tt.expectedIDs) {
+				t.Fatalf("expected %d related IDs, got %d", len(tt.expectedIDs), len(relatedIDs))
 			}
 
-			for feedID, expectedIDs := range tt.expectedMap {
-				actualIDs, exists := relatedMap[feedID]
-				if !exists {
-					t.Errorf("expected key %s not found in result", feedID)
-					continue
-				}
-				if len(actualIDs) != len(expectedIDs) {
-					t.Errorf("for key %s: expected %d IDs, got %d", feedID, len(expectedIDs), len(actualIDs))
-					continue
-				}
-				for i, expectedID := range expectedIDs {
-					if actualIDs[i] != expectedID {
-						t.Errorf("for key %s at index %d: expected ID %s, got %s", feedID, i, expectedID, actualIDs[i])
-					}
+			for i, expectedID := range tt.expectedIDs {
+				if relatedIDs[i] != expectedID {
+					t.Errorf("at index %d: expected ID %s, got %s", i, expectedID, relatedIDs[i])
 				}
 			}
 

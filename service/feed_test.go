@@ -77,7 +77,7 @@ func (m *mockStore) DeleteFeed(ctx context.Context, id string) error {
 	return m.deleteErr
 }
 
-func (m *mockStore) AddRelation(ctx context.Context, feedID, relatedFeedID string, feedType model.FeedType, position int) error {
+func (m *mockStore) AddRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	return m.addErr
 }
 
@@ -85,14 +85,17 @@ func (m *mockStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID st
 	return m.removeErr
 }
 
-func (m *mockStore) GetRelatedFeeds(ctx context.Context) (map[string][]string, error) {
+func (m *mockStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
 	if m.getRelatedErr != nil {
 		return nil, m.getRelatedErr
 	}
 	if m.relatedFeeds == nil {
-		return map[string][]string{}, nil
+		return []string{}, nil
 	}
-	return m.relatedFeeds, nil
+	if feeds, exists := m.relatedFeeds[feedID]; exists {
+		return feeds, nil
+	}
+	return []string{}, nil
 }
 
 // Mock policy resolver
@@ -1256,30 +1259,38 @@ func TestGetRelatedFeeds(t *testing.T) {
 
 	tests := []struct {
 		name          string
+		feedID        string
 		relatedFeeds  map[string][]string
 		getRelatedErr error
-		expectedMap   map[string][]string
+		expectedIDs   []string
 		expectedError bool
 	}{
 		{
-			name: "successful query with multiple relations",
+			name:   "successful query with multiple relations",
+			feedID: "feed123",
 			relatedFeeds: map[string][]string{
 				"feed123": {"feed456", "feed789", "feed012"},
-				"feed456": {"feed123"},
 			},
-			expectedMap: map[string][]string{
-				"feed123": {"feed456", "feed789", "feed012"},
-				"feed456": {"feed123"},
-			},
+			expectedIDs: []string{"feed456", "feed789", "feed012"},
 		},
 		{
 			name:        "empty result",
-			expectedMap: map[string][]string{},
+			feedID:      "feed123",
+			expectedIDs: []string{},
 		},
 		{
 			name:          "store returns error",
+			feedID:        "feed123",
 			getRelatedErr: errors.New("database error"),
 			expectedError: true,
+		},
+		{
+			name:   "feed not in map returns empty",
+			feedID: "nonexistent",
+			relatedFeeds: map[string][]string{
+				"feed123": {"feed456"},
+			},
+			expectedIDs: []string{},
 		},
 	}
 
@@ -1291,7 +1302,7 @@ func TestGetRelatedFeeds(t *testing.T) {
 			}
 			svc := NewFeed[MockPost](store)
 
-			relatedMap, err := svc.GetRelatedFeeds(ctx)
+			relatedIDs, err := svc.GetRelatedFeeds(ctx, tt.feedID)
 
 			if tt.expectedError {
 				if err == nil {
@@ -1304,24 +1315,13 @@ func TestGetRelatedFeeds(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			if len(relatedMap) != len(tt.expectedMap) {
-				t.Fatalf("expected %d keys, got %d", len(tt.expectedMap), len(relatedMap))
+			if len(relatedIDs) != len(tt.expectedIDs) {
+				t.Fatalf("expected %d related IDs, got %d", len(tt.expectedIDs), len(relatedIDs))
 			}
 
-			for feedID, expectedIDs := range tt.expectedMap {
-				actualIDs, exists := relatedMap[feedID]
-				if !exists {
-					t.Errorf("expected key %s not found in result", feedID)
-					continue
-				}
-				if len(actualIDs) != len(expectedIDs) {
-					t.Errorf("for key %s: expected %d IDs, got %d", feedID, len(expectedIDs), len(actualIDs))
-					continue
-				}
-				for i, expectedID := range expectedIDs {
-					if actualIDs[i] != expectedID {
-						t.Errorf("for key %s at index %d: expected ID %s, got %s", feedID, i, expectedID, actualIDs[i])
-					}
+			for i, expectedID := range tt.expectedIDs {
+				if relatedIDs[i] != expectedID {
+					t.Errorf("at index %d: expected ID %s, got %s", i, expectedID, relatedIDs[i])
 				}
 			}
 		})
