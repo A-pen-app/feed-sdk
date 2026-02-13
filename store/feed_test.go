@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/A-pen-app/feed-sdk/model"
@@ -260,64 +261,375 @@ func TestPatchFeed(t *testing.T) {
 func TestDeleteFeed(t *testing.T) {
 	ctx := context.Background()
 
-	tests := []struct {
-		name          string
-		feedID        string
-		mockError     error
-		rowsAffected  int64
-		expectedError bool
-	}{
-		{
-			name:         "successful delete",
-			feedID:       "feed123",
-			rowsAffected: 1,
-		},
-		{
-			name:         "delete non-existent feed",
-			feedID:       "nonexistent",
-			rowsAffected: 0,
-		},
-		{
-			name:          "database error",
-			feedID:        "feed456",
-			mockError:     sqlmock.ErrCancelled,
-			expectedError: true,
-		},
-	}
+	t.Run("begin transaction error", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store, mock, cleanup := newMockStore(t)
-			defer cleanup()
+		mock.ExpectBegin().WillReturnError(sqlmock.ErrCancelled)
 
-			// Set up expectations
-			if tt.mockError != nil {
-				mock.ExpectExec("DELETE FROM feed").WillReturnError(tt.mockError)
-			} else {
-				mock.ExpectExec("DELETE FROM feed").
-					WithArgs(tt.feedID).
-					WillReturnResult(sqlmock.NewResult(0, tt.rowsAffected))
-			}
+		err := store.DeleteFeed(ctx, "feed123")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
 
-			err := store.DeleteFeed(ctx, tt.feedID)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
 
-			if tt.expectedError {
-				if err == nil {
-					t.Fatal("expected error but got none")
-				}
-				return
-			}
+	t.Run("feed not found falls back to simple delete", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("nonexistent").
+			WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("nonexistent").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectCommit()
 
-			// Verify all expectations were met
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("unfulfilled expectations: %v", err)
-			}
-		})
-	}
+		err := store.DeleteFeed(ctx, "nonexistent")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("non-posts feed type does simple delete", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("feed123").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("banners", 3))
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("feed123").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		err := store.DeleteFeed(ctx, "feed123")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("posts feed type with no relations does simple delete", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("feed123").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("feed123").
+			WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("feed123").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		err := store.DeleteFeed(ctx, "feed123")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("posts feed type promotes replacement from relation", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		// 1. Get the feed being deleted
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		// 2. Find a replacement candidate
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{"exposure:1000"}))
+		// 3. Delete the selected relation row
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		// 4. Update remaining relations
+		mock.ExpectExec("UPDATE feed_relation SET related_feed_id").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 2))
+		// 5. Delete the original feed
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		// 6. Insert the replacement at the same position
+		mock.ExpectExec("INSERT INTO feed").
+			WithArgs("replacement_id", model.TypePosts, 5, pq.StringArray{"exposure:1000"}).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("posts promotion with empty policies", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 0))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{}))
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("UPDATE feed_relation SET related_feed_id").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("INSERT INTO feed").
+			WithArgs("replacement_id", model.TypePosts, 0, pq.StringArray{}).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on delete relation row during promotion", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{"exposure:1000"}))
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on update relations during promotion", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{"exposure:1000"}))
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("UPDATE feed_relation SET related_feed_id").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on delete original feed during promotion", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{"exposure:1000"}))
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("UPDATE feed_relation SET related_feed_id").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DELETE FROM feed").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on insert replacement during promotion", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("source_id").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies"}).
+				AddRow("replacement_id", pq.StringArray{"exposure:1000"}))
+		mock.ExpectExec("DELETE FROM feed_relation").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("UPDATE feed_relation SET related_feed_id").
+			WithArgs("replacement_id", "source_id").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("source_id").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("INSERT INTO feed").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "source_id")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on simple delete when feed not found", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("feed123").
+			WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("feed123").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "feed123")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on simple delete for non-posts type", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("feed123").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("banners", 3))
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("feed123").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "feed123")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("error on simple delete for posts with no relations", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT feed_type, position FROM feed").
+			WithArgs("feed123").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_type", "position"}).
+				AddRow("posts", 5))
+		mock.ExpectQuery("SELECT feed_id, policies FROM feed_relation").
+			WithArgs("feed123").
+			WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec("DELETE FROM feed").
+			WithArgs("feed123").
+			WillReturnError(sqlmock.ErrCancelled)
+		mock.ExpectRollback()
+
+		err := store.DeleteFeed(ctx, "feed123")
+		if err == nil {
+			t.Fatal("expected error but got none")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
 }
 
 func TestGetPoliciesOrderBy(t *testing.T) {

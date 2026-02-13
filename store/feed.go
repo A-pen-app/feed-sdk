@@ -8,6 +8,7 @@ import (
 
 	"github.com/A-pen-app/feed-sdk/model"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 const createTableSQL = `
@@ -250,17 +251,83 @@ func (f *store) PatchFeed(ctx context.Context, id string, feed_type model.FeedTy
 }
 
 func (f *store) DeleteFeed(ctx context.Context, id string) error {
-	_, err := f.db.NamedExec(
-		`
-		DELETE FROM
-			feed
-		WHERE
-			feed_id=:feed_id
-		`,
-		map[string]interface{}{
-			"feed_id": id,
-		})
-	return err
+	tx, err := f.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get the feed to be deleted
+	var deletedFeed struct {
+		FeedType string `db:"feed_type"`
+		Position int    `db:"position"`
+	}
+	err = tx.GetContext(ctx, &deletedFeed,
+		`SELECT feed_type, position FROM feed WHERE feed_id = $1 FOR UPDATE`, id)
+	if err != nil {
+		// Feed not found or error — attempt simple delete
+		if _, err := tx.ExecContext(ctx, `DELETE FROM feed WHERE feed_id = $1`, id); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// Only promote a replacement for 'posts' type
+	if model.FeedType(deletedFeed.FeedType) != model.TypePosts {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM feed WHERE feed_id = $1`, id); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// Look for a replacement candidate in feed_relation where related_feed_id = source_id
+	var replacement struct {
+		FeedID   string         `db:"feed_id"`
+		Policies pq.StringArray `db:"policies"`
+	}
+	err = tx.GetContext(ctx, &replacement,
+		`SELECT feed_id, policies FROM feed_relation WHERE related_feed_id = $1 LIMIT 1`, id)
+	if err != nil {
+		// No replacement available, simple delete
+		if _, err := tx.ExecContext(ctx, `DELETE FROM feed WHERE feed_id = $1`, id); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// 1. Delete the selected relation row
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM feed_relation WHERE feed_id = $1 AND related_feed_id = $2`,
+		replacement.FeedID, id); err != nil {
+		return err
+	}
+
+	// 2. Update remaining relations: point related_feed_id from source_id to replacement
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE feed_relation SET related_feed_id = $1 WHERE related_feed_id = $2`,
+		replacement.FeedID, id); err != nil {
+		return err
+	}
+
+	// 3. Delete the original feed
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM feed WHERE feed_id = $1`, id); err != nil {
+		return err
+	}
+
+	// 4. Insert the replacement feed at the same position
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO feed (feed_id, feed_type, position, policies)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (feed_id) DO UPDATE SET
+			 feed_type = EXCLUDED.feed_type,
+			 position = EXCLUDED.position,
+			 policies = EXCLUDED.policies`,
+		replacement.FeedID, model.TypePosts, deletedFeed.Position, replacement.Policies); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // LoadColdstartFromCSV reads a CSV file and loads feed IDs into the feed_coldstart table.
