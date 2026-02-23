@@ -9,6 +9,7 @@ import (
 
 	"github.com/A-pen-app/feed-sdk/model"
 	"github.com/A-pen-app/logging"
+	"github.com/lib/pq"
 )
 
 func NewFeed[T model.Scorable](s store) *Service[T] {
@@ -29,6 +30,8 @@ type store interface {
 	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
 	RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error
 	GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error)
+	CreateFeedPosition(ctx context.Context, feedID string, feedType model.FeedType, position int, policies pq.StringArray) error
+	DeleteFeedPosition(ctx context.Context, feedID string, position int) error
 }
 
 func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
@@ -160,6 +163,14 @@ func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.Fe
 
 func (s *Service[T]) DeleteFeed(ctx context.Context, id string) error {
 	return s.store.DeleteFeed(ctx, id)
+}
+
+func (s *Service[T]) CreateFeedPosition(ctx context.Context, feedID string, feedType model.FeedType, position int, policies pq.StringArray) error {
+	return s.store.CreateFeedPosition(ctx, feedID, feedType, position, policies)
+}
+
+func (s *Service[T]) DeleteFeedPosition(ctx context.Context, feedID string, position int) error {
+	return s.store.DeleteFeedPosition(ctx, feedID, position)
 }
 
 func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
