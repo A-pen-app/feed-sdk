@@ -98,6 +98,14 @@ func (m *mockStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]strin
 	return []string{}, nil
 }
 
+func (m *mockStore) CreateFeedPosition(ctx context.Context, feedID string, feedType model.FeedType, position int, policies pq.StringArray) error {
+	return nil
+}
+
+func (m *mockStore) DeleteFeedPosition(ctx context.Context, feedID string, position int) error {
+	return nil
+}
+
 // Mock policy resolver
 type mockPolicyResolver struct {
 	viewCounts       map[string]int64

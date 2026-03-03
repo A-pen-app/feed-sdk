@@ -16,6 +16,7 @@ import (
 type contextKey string
 
 const COLD_START_KEY contextKey = "coldstart"
+const POSITION_KEY contextKey = "position"
 
 type Feeds[T Scorable] []Feed[T]
 

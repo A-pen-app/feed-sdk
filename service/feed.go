@@ -36,6 +36,7 @@ type store interface {
 
 func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], error) {
 	coldstart, _ := ctx.Value(model.COLD_START_KEY).(bool)
+	position, _ := ctx.Value(model.POSITION_KEY).(string)
 
 	feeds := model.Feeds[T]{}
 	for i := range data {
@@ -56,6 +57,8 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	var err error
 
 	if coldstart {
+		logging.Infow(ctx, "coldstart feed retrieval", "position", position)
+
 		positions, err = f.store.GetColdstart(ctx)
 		if err != nil {
 			return nil, err
