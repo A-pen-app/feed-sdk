@@ -25,6 +25,7 @@ type Service[T model.Scorable] struct {
 type store interface {
 	GetPolicies(ctx context.Context) ([]model.Policy, error)
 	GetColdstart(ctx context.Context) ([]model.Policy, error)
+	GetColdstartByAudience(ctx context.Context, audience string) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
@@ -158,6 +159,13 @@ func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model
 
 func (f *Service[T]) GetColdstartPolicies(ctx context.Context) ([]model.Policy, error) {
 	return f.store.GetColdstart(ctx)
+}
+
+// GetColdstartByAudience returns the coldstart policies for a single audience
+// (see model.ColdstartAudience*). Callers that match several audiences merge the
+// results themselves.
+func (f *Service[T]) GetColdstartByAudience(ctx context.Context, audience string) ([]model.Policy, error) {
+	return f.store.GetColdstartByAudience(ctx, audience)
 }
 
 func (s *Service[T]) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {

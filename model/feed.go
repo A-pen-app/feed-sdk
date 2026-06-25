@@ -18,6 +18,13 @@ type contextKey string
 const COLD_START_KEY contextKey = "coldstart"
 const POSITION_KEY contextKey = "position"
 
+// Coldstart audiences map a user condition to the coldstart table that serves it.
+// Each audience is backed by its own feed_coldstart* table (see store.GetColdstartByAudience).
+const (
+	ColdstartAudienceDefault = "default" // new users (account created within the coldstart window)
+	ColdstartAudienceStudent = "student" // users whose character is student
+)
+
 type Feeds[T Scorable] []Feed[T]
 
 func (f Feeds[T]) Sort() {

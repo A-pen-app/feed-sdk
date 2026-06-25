@@ -199,21 +199,38 @@ func (f *store) GetPolicies(ctx context.Context) ([]model.Policy, error) {
 }
 
 func (f *store) GetColdstart(ctx context.Context) ([]model.Policy, error) {
-	orders := []model.Policy{}
+	return f.GetColdstartByAudience(ctx, model.ColdstartAudienceDefault)
+}
 
-	if err := f.db.Select(
-		&orders,
-		`
+// coldstartAudienceTables whitelists which physical table backs each audience.
+// The table name is interpolated into the query, so it must never come from user
+// input — only values resolved through this map are allowed.
+var coldstartAudienceTables = map[string]string{
+	model.ColdstartAudienceDefault: "feed_coldstart",
+	model.ColdstartAudienceStudent: "feed_coldstart_student",
+}
+
+// GetColdstartByAudience returns the coldstart policies for a single audience,
+// ordered by position. All audiences share the same (feed_id, feed_type, position)
+// shape; they differ only in which table they read from.
+func (f *store) GetColdstartByAudience(ctx context.Context, audience string) ([]model.Policy, error) {
+	table, ok := coldstartAudienceTables[audience]
+	if !ok {
+		return nil, fmt.Errorf("unknown coldstart audience: %s", audience)
+	}
+
+	orders := []model.Policy{}
+	query := fmt.Sprintf(`
 		SELECT
-			feed_coldstart.feed_id,
-			feed_coldstart.feed_type,
-			feed_coldstart.position
+			feed_id,
+			feed_type,
+			position
 		FROM
-			feed_coldstart
+			%s
 		ORDER BY
-			feed_coldstart.position ASC
-		`,
-	); err != nil {
+			position ASC
+	`, table)
+	if err := f.db.Select(&orders, query); err != nil {
 		return nil, err
 	}
 
