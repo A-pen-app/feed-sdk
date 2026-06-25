@@ -60,23 +60,34 @@ func (f *Service[T]) GetFeeds(ctx context.Context, data []T) (model.Feeds[T], er
 	if coldstart {
 		logging.Infow(ctx, "coldstart feed retrieval", "position", position)
 
-		positions, err = f.store.GetColdstart(ctx)
-		if err != nil {
-			return nil, err
+		// Prefer the caller-supplied coldstart id set (already merged across
+		// audiences and filtered for watched feeds); fall back to the default
+		// feed_coldstart table for callers that don't supply one.
+		var idList []string
+		if ids, ok := ctx.Value(model.COLD_START_IDS_KEY).([]string); ok && len(ids) > 0 {
+			idList = ids
+		} else {
+			positions, err = f.store.GetColdstart(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range positions {
+				idList = append(idList, p.FeedId)
+			}
 		}
 
 		// Select at most 5 coldstart feed IDs
-		if len(positions) > 5 {
-			rand.Shuffle(len(positions), func(i, j int) {
-				positions[i], positions[j] = positions[j], positions[i]
+		if len(idList) > 5 {
+			rand.Shuffle(len(idList), func(i, j int) {
+				idList[i], idList[j] = idList[j], idList[i]
 			})
-			positions = positions[:5]
+			idList = idList[:5]
 		}
 
 		// Build set of coldstart feed IDs
 		coldstartIDs := make(map[string]bool)
-		for _, p := range positions {
-			coldstartIDs[p.FeedId] = true
+		for _, id := range idList {
+			coldstartIDs[id] = true
 		}
 
 		// Remove coldstart feeds from list

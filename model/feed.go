@@ -18,6 +18,13 @@ type contextKey string
 const COLD_START_KEY contextKey = "coldstart"
 const POSITION_KEY contextKey = "position"
 
+// COLD_START_IDS_KEY optionally carries the exact set of coldstart feed ids the
+// caller has already assembled (e.g. merged across audiences and filtered for
+// already-watched feeds). When present, GetFeeds pins this set instead of
+// re-querying the default feed_coldstart table, so the caller owns selection and
+// fade-out in one place. Falls back to GetColdstart when absent.
+const COLD_START_IDS_KEY contextKey = "coldstart_ids"
+
 // Coldstart audiences map a user condition to the coldstart table that serves it.
 // Each audience is backed by its own feed_coldstart* table (see store.GetColdstartByAudience).
 const (
