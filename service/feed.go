@@ -26,6 +26,7 @@ type store interface {
 	GetPolicies(ctx context.Context) ([]model.Policy, error)
 	GetColdstart(ctx context.Context) ([]model.Policy, error)
 	GetColdstartByAudience(ctx context.Context, audience string) ([]model.Policy, error)
+	GetColdstartBySpecialty(ctx context.Context, specialties []string) ([]model.Policy, error)
 	PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error
 	DeleteFeed(ctx context.Context, id string) error
 	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
@@ -166,6 +167,12 @@ func (f *Service[T]) GetPolicies(ctx context.Context, maxPositions int) ([]model
 		})
 	}
 	return positions, nil
+}
+
+// GetColdstartBySpecialty returns the specialty coldstart policies matching the
+// given specialties (see store.GetColdstartBySpecialty).
+func (f *Service[T]) GetColdstartBySpecialty(ctx context.Context, specialties []string) ([]model.Policy, error) {
+	return f.store.GetColdstartBySpecialty(ctx, specialties)
 }
 
 func (f *Service[T]) GetColdstartPolicies(ctx context.Context) ([]model.Policy, error) {

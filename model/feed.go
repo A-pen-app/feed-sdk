@@ -28,8 +28,9 @@ const COLD_START_IDS_KEY contextKey = "coldstart_ids"
 // Coldstart audiences map a user condition to the coldstart table that serves it.
 // Each audience is backed by its own feed_coldstart* table (see store.GetColdstartByAudience).
 const (
-	ColdstartAudienceDefault = "default" // new users (account created within the coldstart window)
-	ColdstartAudienceStudent = "student" // users whose character is student
+	ColdstartAudienceDefault   = "default"   // new users (account created within the coldstart window)
+	ColdstartAudienceStudent   = "student"   // users whose character is student
+	ColdstartAudienceSpecialty = "specialty" // users who have at least one specialty
 )
 
 type Feeds[T Scorable] []Feed[T]

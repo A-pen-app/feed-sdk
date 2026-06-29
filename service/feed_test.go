@@ -76,6 +76,13 @@ func (m *mockStore) GetColdstartByAudience(ctx context.Context, audience string)
 	return m.policies, nil
 }
 
+func (m *mockStore) GetColdstartBySpecialty(ctx context.Context, specialties []string) ([]model.Policy, error) {
+	if m.policiesErr != nil {
+		return nil, m.policiesErr
+	}
+	return m.policies, nil
+}
+
 func (m *mockStore) PatchFeed(ctx context.Context, id string, feedtype model.FeedType, position int) error {
 	return m.patchErr
 }

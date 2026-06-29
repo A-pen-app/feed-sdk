@@ -206,8 +206,9 @@ func (f *store) GetColdstart(ctx context.Context) ([]model.Policy, error) {
 // The table name is interpolated into the query, so it must never come from user
 // input — only values resolved through this map are allowed.
 var coldstartAudienceTables = map[string]string{
-	model.ColdstartAudienceDefault: "feed_coldstart",
-	model.ColdstartAudienceStudent: "feed_coldstart_student",
+	model.ColdstartAudienceDefault:   "feed_coldstart",
+	model.ColdstartAudienceStudent:   "feed_coldstart_student",
+	model.ColdstartAudienceSpecialty: "feed_coldstart_specialty",
 }
 
 // GetColdstartByAudience returns the coldstart policies for a single audience,
@@ -231,6 +232,37 @@ func (f *store) GetColdstartByAudience(ctx context.Context, audience string) ([]
 			position ASC
 	`, table)
 	if err := f.db.Select(&orders, query); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
+
+// GetColdstartBySpecialty returns the specialty coldstart policies whose specialty
+// matches one of the given specialties, ordered by position. Unlike the other
+// audiences, the specialty table is tagged per row, so feeds are matched to the
+// caller's specialties rather than served wholesale. Returns empty when no
+// specialties are supplied.
+func (f *store) GetColdstartBySpecialty(ctx context.Context, specialties []string) ([]model.Policy, error) {
+	orders := []model.Policy{}
+	if len(specialties) == 0 {
+		return orders, nil
+	}
+
+	table := coldstartAudienceTables[model.ColdstartAudienceSpecialty]
+	query := fmt.Sprintf(`
+		SELECT
+			feed_id,
+			feed_type,
+			position
+		FROM
+			%s
+		WHERE
+			specialty = ANY($1)
+		ORDER BY
+			position ASC
+	`, table)
+	if err := f.db.Select(&orders, query, pq.Array(specialties)); err != nil {
 		return nil, err
 	}
 
