@@ -60,10 +60,11 @@ type Scorable interface {
 type FeedType string
 
 const (
-	TypePost    FeedType = "post"
-	TypePosts   FeedType = "posts"
-	TypeBanners FeedType = "banners"
-	TypeChat    FeedType = "chat"
+	TypePost             FeedType = "post"
+	TypePosts            FeedType = "posts"
+	TypeBanners          FeedType = "banners"
+	TypeChat             FeedType = "chat"
+	TypeRecommendAuthors FeedType = "recommend_authors"
 )
 
 type PolicyType string
