@@ -11,7 +11,7 @@ const createFeedRelationTableSQL = `
 CREATE TABLE IF NOT EXISTS feed_relation (
 	feed_id uuid NOT NULL,
 	related_feed_id uuid NOT NULL,
-	policies character varying(200)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+	policies text[] NOT NULL DEFAULT ARRAY[]::text[],
 	CONSTRAINT feed_relation_pkey PRIMARY KEY (feed_id, related_feed_id),
 	CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
 )`
