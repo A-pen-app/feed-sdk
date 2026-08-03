@@ -911,6 +911,47 @@ func TestChangelogTriggerRecreation(t *testing.T) {
 	})
 }
 
+func TestWidenPolicyColumns(t *testing.T) {
+	// Every column that stores a policy array has to be widened together.
+	// CreateFeedPosition passes one policies array to both feed and
+	// feed_relation, and the changelog trigger copies it into feed_changelog,
+	// so a column left capped fails the same write from a different place.
+
+	t.Run("covers every policy column", func(t *testing.T) {
+		expected := []string{
+			"ALTER TABLE feed ALTER COLUMN policies TYPE text[]",
+			"ALTER TABLE feed_changelog ALTER COLUMN old_policies TYPE text[]",
+			"ALTER TABLE feed_changelog ALTER COLUMN new_policies TYPE text[]",
+			"ALTER TABLE feed_relation ALTER COLUMN policies TYPE text[]",
+		}
+
+		for _, stmt := range expected {
+			if !contains(widenPolicyColumnsSQL, stmt) {
+				t.Errorf("widen SQL missing statement: %s", stmt)
+			}
+		}
+	})
+
+	t.Run("guards on atttypmod so a second run is a no-op", func(t *testing.T) {
+		for _, table := range []string{"feed", "feed_changelog", "feed_relation"} {
+			if !contains(widenPolicyColumnsSQL, "attrelid = '"+table+"'::regclass") {
+				t.Errorf("widen SQL missing atttypmod guard for %s", table)
+			}
+		}
+		if contains(widenPolicyColumnsSQL, "character_maximum_length") {
+			t.Error("widen SQL must not use information_schema: it reports NULL for array columns")
+		}
+	})
+
+	t.Run("tolerates tables that do not exist yet", func(t *testing.T) {
+		for _, table := range []string{"feed_changelog", "feed_relation"} {
+			if !contains(widenPolicyColumnsSQL, "to_regclass('"+table+"')") {
+				t.Errorf("widen SQL should guard %s with to_regclass", table)
+			}
+		}
+	})
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||

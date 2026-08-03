@@ -179,6 +179,7 @@ A trigger validates policy format on insert/update, ensuring policies match the 
 CREATE TABLE IF NOT EXISTS feed_relation (
     feed_id uuid NOT NULL,
     related_feed_id uuid NOT NULL,
+    policies text[] NOT NULL DEFAULT ARRAY[]::text[],
     CONSTRAINT feed_relation_pkey PRIMARY KEY (feed_id, related_feed_id),
     CONSTRAINT feed_relation_feed_id_fkey FOREIGN KEY (feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE

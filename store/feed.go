@@ -137,22 +137,33 @@ BEGIN
 END $$;
 `
 
-// widenPolicyColumnsSQL relaxes the policy columns from varchar(200)[] to text[]
-// on databases created before that became the default.
+// widenPolicyColumnsSQL relaxes every policy column to text[] on databases
+// created before that became the default: feed.policies,
+// feed_changelog.old_policies, feed_changelog.new_policies and
+// feed_relation.policies. All four receive the same policy array —
+// CreateFeedPosition hands it to AddRelationWithPolicies when the slot is
+// already held by a post, and the changelog trigger copies it — so leaving any
+// one of them capped moves the failure rather than removing it.
 //
-// A single policy was capped at 200 characters. A multi-value istarget
-// ("istarget:cardiology:neurology:...") passes that once roughly a dozen
-// alternatives are listed, and the INSERT then fails outright with
-// "value too long for type character varying(200)". PostgreSQL stores text and
+// A capped policy fails the write outright with "value too long for type
+// character varying(N)", and on feed_changelog it fails inside the AFTER
+// trigger, which rolls the feed write back with it. PostgreSQL stores text and
 // varchar identically, so the cap bought nothing to begin with.
+//
+// The cap is not uniformly 200 in the wild: apen (dev and prod both) carries
+// feed_changelog.new_policies at varchar(50), which a single-value
+// "istheone:{limit}:{uuid}" already exceeds at 53 characters. So this is not
+// only about multi-value istarget — it repairs writes that are broken today.
+// Hence the guard is on atttypmod rather than on a specific length.
 //
 // Guarded on atttypmod (-1 means unlimited) so a second run is a no-op.
 // information_schema.columns cannot be used here: it reports
 // character_maximum_length as NULL for every array column, limited or not.
 //
 // This does rewrite the tables — array types are not binary-coercible the way
-// scalar varchar->text is. feed holds one row per slot so it is negligible;
-// feed_changelog grows over time, but at 50k rows the rewrite measured ~90ms.
+// scalar varchar->text is. feed and feed_relation hold at most one row per slot
+// so they are negligible; feed_changelog grows over time, but the largest
+// observed instance is ~1.2k rows and at 50k rows the rewrite measured ~90ms.
 const widenPolicyColumnsSQL = `
 DO $$
 BEGIN
@@ -176,6 +187,16 @@ BEGIN
 			WHERE attrelid = 'feed_changelog'::regclass AND attname = 'new_policies' AND atttypmod <> -1
 		) THEN
 			ALTER TABLE feed_changelog ALTER COLUMN new_policies TYPE text[];
+		END IF;
+	END IF;
+
+	IF to_regclass('feed_relation') IS NOT NULL THEN
+		IF EXISTS (
+			SELECT 1 FROM pg_attribute
+			WHERE attrelid = 'feed_relation'::regclass AND attname = 'policies' AND atttypmod <> -1
+		) THEN
+			ALTER TABLE feed_relation ALTER COLUMN policies TYPE text[];
+			ALTER TABLE feed_relation ALTER COLUMN policies SET DEFAULT ARRAY[]::text[];
 		END IF;
 	END IF;
 END $$;
