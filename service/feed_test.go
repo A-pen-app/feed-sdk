@@ -932,7 +932,7 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			description: "Only posts requiring missing attributes should be hidden",
 		},
 		{
-			name:   "case sensitive attribute matching",
+			name:   "case insensitive attribute matching",
 			userID: "user1",
 			policyMap: map[string]*model.Policy{
 				"post1": {
@@ -943,10 +943,33 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			userAttrs: map[string][]string{
 				"user1": {"premium"},
 			},
-			expectedViolations: map[string]string{
-				"post1": "istarget:Premium",
+			expectedViolations: map[string]string{},
+			description:        "Attribute matching should be case-insensitive",
+		},
+		{
+			name:   "lower-case policy matches upper-case resolver attribute",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedId:   "post1",
+					Policies: pq.StringArray{"istarget:cardiology"},
+				},
+				"post2": {
+					FeedId:   "post2",
+					Policies: pq.StringArray{"istarget:internal_medicine"},
+				},
+				"post3": {
+					FeedId:   "post3",
+					Policies: pq.StringArray{"istarget:male"},
+				},
 			},
-			description: "Attribute matching should be case-sensitive",
+			userAttrs: map[string][]string{
+				// Verbatim shape of what apen-api's GetUserAttribute returns:
+				// specialty keys and gender are upper-cased at the source.
+				"user1": {"Male", "doctor", "Cardiology", "Internal_medicine"},
+			},
+			expectedViolations: map[string]string{},
+			description:        "validate_policies_format forces lower-case params, so upper-case attributes must still match",
 		},
 		{
 			name:   "user with many attributes matches one target",

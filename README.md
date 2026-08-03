@@ -122,7 +122,7 @@ The SDK supports the following policy types for controlling feed visibility:
 | `istheone` | `istheone:{limit}:{userId}` | Limits view count for a specific user. |
 | `inexpose` | `inexpose:{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose:{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
-| `istarget` | `istarget:{attribute}` | Feed is only visible to users with the specified attribute |
+| `istarget` | `istarget:{attribute}` | Feed is only visible to users with the specified attribute. Matched case-insensitively against `GetUserAttribute`, since the policy format constraint only accepts lower-case params. |
 
 ### Policy Examples
 
