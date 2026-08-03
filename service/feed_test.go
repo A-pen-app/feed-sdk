@@ -1068,6 +1068,63 @@ func TestBuildPolicyViolationMap_IstargetPolicy(t *testing.T) {
 			description: "First violation should be returned when multiple istarget policies exist",
 		},
 		{
+			name:   "multi-value istarget - matches any alternative",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedId:   "post1",
+					Policies: pq.StringArray{"istarget:cardiology:neurology:dermatology"},
+				},
+				"post2": {
+					FeedId:   "post2",
+					Policies: pq.StringArray{"istarget:neurology:cardiology"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"Cardiology"},
+			},
+			expectedViolations: map[string]string{},
+			description:        "One matching alternative is enough, wherever it sits in the list",
+		},
+		{
+			name:   "multi-value istarget - no alternative matches",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedId:   "post1",
+					Policies: pq.StringArray{"istarget:cardiology:neurology"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"Dermatology"},
+			},
+			expectedViolations: map[string]string{
+				"post1": "istarget:cardiology:neurology",
+			},
+			description: "Violated only when the user holds none of the alternatives",
+		},
+		{
+			name:   "multi-value ORs within a policy, ANDs across policies",
+			userID: "user1",
+			policyMap: map[string]*model.Policy{
+				"post1": {
+					FeedId:   "post1",
+					Policies: pq.StringArray{"istarget:cardiology:neurology", "istarget:male"},
+				},
+				"post2": {
+					FeedId:   "post2",
+					Policies: pq.StringArray{"istarget:cardiology:neurology", "istarget:female"},
+				},
+			},
+			userAttrs: map[string][]string{
+				"user1": {"Male", "Cardiology"},
+			},
+			expectedViolations: map[string]string{
+				"post2": "istarget:female",
+			},
+			description: "(cardiology OR neurology) AND male — the audience-filter shape",
+		},
+		{
 			name:   "istarget with other policies - istarget checked in order",
 			userID: "user1",
 			policyMap: map[string]*model.Policy{

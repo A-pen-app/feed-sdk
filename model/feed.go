@@ -195,6 +195,13 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 			logging.Errorw(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedId, "policy", p)
 			return false
 		} else {
+			// Every segment after the policy name is one alternative, ORed together:
+			// "istarget:cardiology:neurology" matches a user holding either. Separate
+			// istarget policies stay ANDed, so pairing it with "istarget:male" reads as
+			// (cardiology OR neurology) AND male — the shape an audience filter needs.
+			// A single-segment policy is unchanged, which is every policy written to
+			// date, so this is purely additive.
+			//
 			// Matching is case-insensitive: the validate_policies_format trigger
 			// installed by store.addPolicyFormatConstraintSQL only accepts
 			// [a-z0-9:_-] for the param, so a policy can never carry an
@@ -202,10 +209,17 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 			// meanwhile, return attributes verbatim from their own vocabulary (e.g.
 			// apen-api returns specialties such as "Cardiology"). Comparing verbatim
 			// would make those attributes impossible to target at all.
-			if !slices.ContainsFunc(userAttrs, func(attr string) bool {
-				return strings.EqualFold(attr, rawParam)
-			}) {
-				// no attribute matches the given target attribute, the policy is violated
+			matched := false
+			for _, target := range parsed[1:] {
+				if slices.ContainsFunc(userAttrs, func(attr string) bool {
+					return strings.EqualFold(attr, target)
+				}) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				// no attribute matches any of the target attributes, the policy is violated
 				return true
 			}
 			// matched - no violation, return false to next policy
