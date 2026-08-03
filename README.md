@@ -122,7 +122,7 @@ The SDK supports the following policy types for controlling feed visibility:
 | `istheone` | `istheone:{limit}:{userId}` | Limits view count for a specific user. |
 | `inexpose` | `inexpose:{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose:{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
-| `istarget` | `istarget:{attribute}` | Feed is only visible to users with the specified attribute. Matched case-insensitively against `GetUserAttribute`, since the policy format constraint only accepts lower-case params. |
+| `istarget` | `istarget:{attribute}[:{attribute}...]` | Feed is only visible to users holding **at least one** of the listed attributes. Matched case-insensitively against `GetUserAttribute`, since the policy format constraint only accepts lower-case params. |
 
 ### Policy Examples
 
@@ -134,7 +134,18 @@ istheone:5:user123                         # Max 5 views for user "user123"
 inexpose:1735689600                        # Hidden until Jan 1, 2025
 unexpose:1735689600                        # Visible until Jan 1, 2025
 istarget:premium                           # Only for users with "premium" attribute
+istarget:cardiology:neurology              # Users with either attribute (OR)
 ```
+
+Alternatives inside one `istarget` are ORed; separate `istarget` policies are ANDed
+with each other and with every other policy. So
+
+```
+istarget:cardiology:neurology
+istarget:male
+```
+
+reads as `(cardiology OR neurology) AND male`.
 
 ### Helper Policies
 
