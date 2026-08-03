@@ -195,7 +195,16 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 			logging.Errorw(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedId, "policy", p)
 			return false
 		} else {
-			if !slices.Contains(userAttrs, rawParam) {
+			// Matching is case-insensitive: the validate_policies_format trigger
+			// installed by store.addPolicyFormatConstraintSQL only accepts
+			// [a-z0-9:_-] for the param, so a policy can never carry an
+			// upper-case attribute. Resolvers,
+			// meanwhile, return attributes verbatim from their own vocabulary (e.g.
+			// apen-api returns specialties such as "Cardiology"). Comparing verbatim
+			// would make those attributes impossible to target at all.
+			if !slices.ContainsFunc(userAttrs, func(attr string) bool {
+				return strings.EqualFold(attr, rawParam)
+			}) {
 				// no attribute matches the given target attribute, the policy is violated
 				return true
 			}
