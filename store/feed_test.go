@@ -22,7 +22,8 @@ func newMockStore(t *testing.T) (*store, sqlmock.Sqlmock, func()) {
 	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0)) // widenPolicyColumnsSQL
+	mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0)) // createFeedChangelogTriggerSQL
 
 	sqlxDB := sqlx.NewDb(db, "postgres")
 	s := NewFeed(sqlxDB)
@@ -52,7 +53,8 @@ func TestNewFeed(t *testing.T) {
 		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0)) // widenPolicyColumnsSQL
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0)) // createFeedChangelogTriggerSQL
 
 		sqlxDB := sqlx.NewDb(db, "postgres")
 		store := NewFeed(sqlxDB)
@@ -726,7 +728,39 @@ func TestFeedChangelogTableCreation(t *testing.T) {
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Changelog table creation succeeds
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Widening the policy columns succeeds
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
 		// Changelog trigger creation fails
+		mock.ExpectExec("DO \\$\\$").WillReturnError(sqlmock.ErrCancelled)
+
+		sqlxDB := sqlx.NewDb(db, "postgres")
+		NewFeed(sqlxDB)
+	})
+
+	t.Run("panics on policy column widening error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic on policy column widening error, but did not panic")
+			} else {
+				panicMsg := r.(string)
+				if panicMsg != "failed to widen policy columns: canceling query due to user request" {
+					t.Errorf("unexpected panic message: %s", panicMsg)
+				}
+			}
+		}()
+
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatalf("failed to create mock db: %v", err)
+		}
+		defer db.Close()
+
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_coldstart").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("DO \\$\\$").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_relation").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS feed_changelog").WillReturnResult(sqlmock.NewResult(0, 0))
+		// Widening fails
 		mock.ExpectExec("DO \\$\\$").WillReturnError(sqlmock.ErrCancelled)
 
 		sqlxDB := sqlx.NewDb(db, "postgres")
@@ -743,8 +777,8 @@ func TestFeedChangelogTableCreation(t *testing.T) {
 			"new_feed_type character varying(20)",
 			"old_position integer",
 			"new_position integer",
-			"old_policies character varying(200)[]",
-			"new_policies character varying(200)[]",
+			"old_policies text[]",
+			"new_policies text[]",
 			"changed_at timestamp with time zone NOT NULL DEFAULT NOW()",
 		}
 

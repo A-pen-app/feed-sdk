@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS feed (
     feed_id uuid NOT NULL,
     position integer NOT NULL DEFAULT 0,
     feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
-    policies character varying(200)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+    policies text[] NOT NULL DEFAULT ARRAY[]::text[],
     CONSTRAINT feed_pkey PRIMARY KEY (feed_id),
     CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 );
@@ -198,8 +198,8 @@ CREATE TABLE IF NOT EXISTS feed_changelog (
     new_feed_type character varying(20),
     old_position integer,
     new_position integer,
-    old_policies character varying(200)[],
-    new_policies character varying(200)[],
+    old_policies text[],
+    new_policies text[],
     changed_at timestamp with time zone NOT NULL DEFAULT NOW()
 );
 ```

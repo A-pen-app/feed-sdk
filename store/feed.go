@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS feed (
 	feed_id uuid NOT NULL,
 	position integer NOT NULL DEFAULT 0,
 	feed_type character varying(20) NOT NULL DEFAULT 'banners'::character varying,
-	policies character varying(200)[] NOT NULL DEFAULT ARRAY[]::character varying[],
+	policies text[] NOT NULL DEFAULT ARRAY[]::text[],
 	CONSTRAINT feed_pkey PRIMARY KEY (feed_id),
 	CONSTRAINT feed_position_position1_key UNIQUE (position) INCLUDE (position)
 )`
@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS feed_changelog (
 	new_feed_type character varying(20),
 	old_position integer,
 	new_position integer,
-	old_policies character varying(200)[],
-	new_policies character varying(200)[],
+	old_policies text[],
+	new_policies text[],
 	changed_at timestamp with time zone NOT NULL DEFAULT NOW()
 )`
 
@@ -137,6 +137,50 @@ BEGIN
 END $$;
 `
 
+// widenPolicyColumnsSQL relaxes the policy columns from varchar(200)[] to text[]
+// on databases created before that became the default.
+//
+// A single policy was capped at 200 characters. A multi-value istarget
+// ("istarget:cardiology:neurology:...") passes that once roughly a dozen
+// alternatives are listed, and the INSERT then fails outright with
+// "value too long for type character varying(200)". PostgreSQL stores text and
+// varchar identically, so the cap bought nothing to begin with.
+//
+// Guarded on atttypmod (-1 means unlimited) so a second run is a no-op.
+// information_schema.columns cannot be used here: it reports
+// character_maximum_length as NULL for every array column, limited or not.
+//
+// This does rewrite the tables — array types are not binary-coercible the way
+// scalar varchar->text is. feed holds one row per slot so it is negligible;
+// feed_changelog grows over time, but at 50k rows the rewrite measured ~90ms.
+const widenPolicyColumnsSQL = `
+DO $$
+BEGIN
+	IF EXISTS (
+		SELECT 1 FROM pg_attribute
+		WHERE attrelid = 'feed'::regclass AND attname = 'policies' AND atttypmod <> -1
+	) THEN
+		ALTER TABLE feed ALTER COLUMN policies TYPE text[];
+		ALTER TABLE feed ALTER COLUMN policies SET DEFAULT ARRAY[]::text[];
+	END IF;
+
+	IF to_regclass('feed_changelog') IS NOT NULL THEN
+		IF EXISTS (
+			SELECT 1 FROM pg_attribute
+			WHERE attrelid = 'feed_changelog'::regclass AND attname = 'old_policies' AND atttypmod <> -1
+		) THEN
+			ALTER TABLE feed_changelog ALTER COLUMN old_policies TYPE text[];
+		END IF;
+		IF EXISTS (
+			SELECT 1 FROM pg_attribute
+			WHERE attrelid = 'feed_changelog'::regclass AND attname = 'new_policies' AND atttypmod <> -1
+		) THEN
+			ALTER TABLE feed_changelog ALTER COLUMN new_policies TYPE text[];
+		END IF;
+	END IF;
+END $$;
+`
+
 func NewFeed(db *sqlx.DB) *store {
 	if db == nil {
 		panic("database connection cannot be nil")
@@ -160,6 +204,10 @@ func NewFeed(db *sqlx.DB) *store {
 
 	if _, err := db.Exec(createFeedChangelogTableSQL); err != nil {
 		panic("failed to create feed_changelog table: " + err.Error())
+	}
+
+	if _, err := db.Exec(widenPolicyColumnsSQL); err != nil {
+		panic("failed to widen policy columns: " + err.Error())
 	}
 
 	if _, err := db.Exec(createFeedChangelogTriggerSQL); err != nil {
