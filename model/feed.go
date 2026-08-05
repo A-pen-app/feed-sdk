@@ -236,3 +236,12 @@ type Policy struct {
 	Position int            `json:"position" db:"position"`
 	Policies pq.StringArray `json:"policies" db:"policies"`
 }
+
+// PoolCandidate is one entry of a 'posts' pool slot: a post that may be shown
+// at the pool's position, carrying its own policies and selection weight.
+// Rows live in feed_relation as (feed_id=candidate post, related_feed_id=pool).
+type PoolCandidate struct {
+	FeedID   string         `json:"id" db:"feed_id"`
+	Policies pq.StringArray `json:"policies" db:"policies"`
+	Weight   int            `json:"weight" db:"weight"`
+}
