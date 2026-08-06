@@ -231,6 +231,10 @@ func NewFeed(db *sqlx.DB) *store {
 		panic("failed to widen policy columns: " + err.Error())
 	}
 
+	if _, err := db.Exec(addRelationWeightColumnSQL); err != nil {
+		panic("failed to add feed_relation weight column: " + err.Error())
+	}
+
 	if _, err := db.Exec(createFeedChangelogTriggerSQL); err != nil {
 		panic("failed to create feed_changelog trigger: " + err.Error())
 	}

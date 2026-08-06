@@ -148,7 +148,7 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 		{
 			name:   "successful query with multiple relations",
 			feedID: "feed123",
-			mockRows: sqlmock.NewRows([]string{"related_feed_id"}).
+			mockRows: sqlmock.NewRows([]string{"feed_id"}).
 				AddRow("feed456").
 				AddRow("feed789").
 				AddRow("feed012"),
@@ -157,7 +157,7 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 		{
 			name:        "empty result set",
 			feedID:      "feed123",
-			mockRows:    sqlmock.NewRows([]string{"related_feed_id"}),
+			mockRows:    sqlmock.NewRows([]string{"feed_id"}),
 			expectedIDs: []string{},
 		},
 		{
@@ -169,7 +169,7 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 		{
 			name:   "single relation",
 			feedID: "feed123",
-			mockRows: sqlmock.NewRows([]string{"related_feed_id"}).
+			mockRows: sqlmock.NewRows([]string{"feed_id"}).
 				AddRow("feed456"),
 			expectedIDs: []string{"feed456"},
 		},
@@ -181,11 +181,11 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 			defer cleanup()
 
 			if tt.mockError != nil {
-				mock.ExpectQuery("SELECT related_feed_id FROM feed_relation").
+				mock.ExpectQuery("SELECT feed_id FROM feed_relation").
 					WithArgs(tt.feedID).
 					WillReturnError(tt.mockError)
 			} else {
-				mock.ExpectQuery("SELECT related_feed_id FROM feed_relation").
+				mock.ExpectQuery("SELECT feed_id FROM feed_relation").
 					WithArgs(tt.feedID).
 					WillReturnRows(tt.mockRows)
 			}
@@ -218,4 +218,71 @@ func TestGetRelatedFeedsStore(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetPoolCandidatesStore(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns candidates with policies and weight", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		rows := sqlmock.NewRows([]string{"feed_id", "policies", "weight"}).
+			AddRow("post-a", "{}", 100).
+			AddRow("post-b", `{"istarget:nurse"}`, 300)
+		mock.ExpectQuery("SELECT feed_id, policies, weight FROM feed_relation").
+			WithArgs("pool-1").
+			WillReturnRows(rows)
+
+		candidates, err := store.GetPoolCandidates(ctx, "pool-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 2 {
+			t.Fatalf("expected 2 candidates, got %d", len(candidates))
+		}
+		if candidates[0].FeedID != "post-a" || candidates[0].Weight != 100 {
+			t.Errorf("unexpected first candidate: %+v", candidates[0])
+		}
+		if candidates[1].FeedID != "post-b" || candidates[1].Weight != 300 {
+			t.Errorf("unexpected second candidate: %+v", candidates[1])
+		}
+		if len(candidates[1].Policies) != 1 || candidates[1].Policies[0] != "istarget:nurse" {
+			t.Errorf("policies not scanned: %+v", candidates[1].Policies)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("empty pool returns empty slice", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT feed_id, policies, weight FROM feed_relation").
+			WithArgs("pool-empty").
+			WillReturnRows(sqlmock.NewRows([]string{"feed_id", "policies", "weight"}))
+
+		candidates, err := store.GetPoolCandidates(ctx, "pool-empty")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 0 {
+			t.Fatalf("expected 0 candidates, got %d", len(candidates))
+		}
+	})
+
+	t.Run("database error propagates", func(t *testing.T) {
+		store, mock, cleanup := newMockStore(t)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT feed_id, policies, weight FROM feed_relation").
+			WithArgs("pool-err").
+			WillReturnError(sqlmock.ErrCancelled)
+
+		if _, err := store.GetPoolCandidates(ctx, "pool-err"); err == nil {
+			t.Fatal("expected error but got none")
+		}
+	})
 }

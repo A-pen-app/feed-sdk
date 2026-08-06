@@ -45,14 +45,16 @@ func (m MockPost) Score() float64 {
 
 // Mock store implementation
 type mockStore struct {
-	policies      []model.Policy
-	policiesErr   error
-	patchErr      error
-	deleteErr     error
-	relatedFeeds  map[string][]string
-	addErr        error
-	removeErr     error
-	getRelatedErr error
+	policies       []model.Policy
+	policiesErr    error
+	patchErr       error
+	deleteErr      error
+	relatedFeeds   map[string][]string
+	addErr         error
+	removeErr      error
+	getRelatedErr  error
+	poolCandidates map[string][]model.PoolCandidate
+	poolErr        error
 }
 
 func (m *mockStore) GetPolicies(ctx context.Context) ([]model.Policy, error) {
@@ -97,6 +99,13 @@ func (m *mockStore) AddRelation(ctx context.Context, feedID, relatedFeedID strin
 
 func (m *mockStore) RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error {
 	return m.removeErr
+}
+
+func (m *mockStore) GetPoolCandidates(ctx context.Context, poolID string) ([]model.PoolCandidate, error) {
+	if m.poolErr != nil {
+		return nil, m.poolErr
+	}
+	return m.poolCandidates[poolID], nil
 }
 
 func (m *mockStore) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {

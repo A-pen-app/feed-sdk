@@ -180,11 +180,36 @@ CREATE TABLE IF NOT EXISTS feed_relation (
     feed_id uuid NOT NULL,
     related_feed_id uuid NOT NULL,
     policies text[] NOT NULL DEFAULT ARRAY[]::text[],
+    weight int NOT NULL DEFAULT 100,
     CONSTRAINT feed_relation_pkey PRIMARY KEY (feed_id, related_feed_id),
-    CONSTRAINT feed_relation_feed_id_fkey FOREIGN KEY (feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     CONSTRAINT feed_relation_related_feed_id_fkey FOREIGN KEY (related_feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
 );
 ```
+
+Rows are directional: `feed_id` is the candidate/attached post, `related_feed_id`
+is the feed row occupying the slot (a `posts` head or pool marker). Only the
+related side carries a foreign key — candidates are bare post ids, not feed rows.
+
+### Pool Selection
+
+A `posts` slot holds a pool of candidate posts, each with its own `policies`
+and a selection `weight`. `PickFromPool(ctx, userID, poolID, resolver)` decides
+which single candidate that user sees:
+
+1. **Eligibility** — a candidate is skipped if its `weight` is `<= 0`
+   (paused: the row and its settings are kept, but it never shows) or if any of
+   its own policies is violated for this user. Exposure counting runs against
+   the candidate's post id, so caps are per-post.
+2. **Sticky weighted draw** — survivors split traffic in proportion to
+   `weight`. The draw hashes `userID:poolID` (FNV-1a, non-cryptographic — it
+   only buckets users), so the same user keeps seeing the same candidate while
+   it stays eligible, and the population as a whole splits by weight. Equal
+   weights mean an even split. When a candidate drops out (its schedule ends,
+   its exposure cap fills, or it is paused), its users are redistributed among
+   the remaining survivors by the same rule.
+
+An empty return with a nil error means no candidate survived; render nothing at
+that position, exactly as for a violated single-post slot.
 
 ### Feed Changelog Table
 

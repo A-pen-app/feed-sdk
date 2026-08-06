@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"hash/fnv"
 	"math/rand"
 	"slices"
 	"sort"
@@ -32,6 +34,7 @@ type store interface {
 	AddRelation(ctx context.Context, feedID, relatedFeedID string) error
 	RemoveRelation(ctx context.Context, feedID, relatedFeedID string) error
 	GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error)
+	GetPoolCandidates(ctx context.Context, poolID string) ([]model.PoolCandidate, error)
 	CreateFeedPosition(ctx context.Context, feedID string, feedType model.FeedType, position int, policies pq.StringArray) error
 	DeleteFeedPosition(ctx context.Context, feedID string, position int) error
 }
@@ -240,4 +243,87 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 
 func (s *Service[T]) GetRelatedFeeds(ctx context.Context, feedID string) ([]string, error) {
 	return s.store.GetRelatedFeeds(ctx, feedID)
+}
+
+// PickFromPool resolves which candidate a pool slot shows to a given user, and
+// is the whole render-side contract of a 'posts' slot: the caller treats the
+// returned id as an ordinary post and the client never learns the slot held a
+// pool. An empty id with a nil error means no candidate survived — the caller
+// should render nothing at that position, exactly as it would for a violated
+// single-post slot.
+//
+// Selection happens in two stages.
+//
+// Eligibility: a candidate is out if its weight is <= 0 (paused: the row is
+// kept, its policies and weight untouched, but it never shows) or if any of its
+// own policies is violated for this user — the same Violated machinery that
+// gates whole slots, evaluated against the candidate's post id so exposure
+// counting stays per-post.
+//
+// Draw: survivors split traffic in proportion to weight via a sticky draw.
+// FNV-1a over "userID:poolID" places a point on the accumulated weight line,
+// walked in GetPoolCandidates order (feed_id ASC), which must stay
+// deterministic for the draw to be sticky. The hash is not cryptographic and
+// does not need to be — it only buckets users. The same user therefore always
+// resolves to the same candidate while eligibility holds, so the slot does not
+// flicker between refreshes, while the population as a whole splits by weight.
+// When a candidate drops out (schedule ends, exposure cap reached, paused), its
+// users are redistributed among the remaining survivors by the same rule.
+func (s *Service[T]) PickFromPool(ctx context.Context, userID, poolID string, resolver model.PolicyResolver) (string, error) {
+	// Istarget evaluation calls straight into the resolver, and unlike the
+	// exposure path there is no per-policy nil check on this route — a nil
+	// resolver with an istarget candidate would panic mid-request. Fail loudly
+	// at the door instead.
+	if resolver == nil {
+		return "", errors.New("PickFromPool: resolver must not be nil")
+	}
+
+	candidates, err := s.store.GetPoolCandidates(ctx, poolID)
+	if err != nil {
+		return "", err
+	}
+
+	survivors := make([]model.PoolCandidate, 0, len(candidates))
+	totalWeight := uint64(0)
+	for _, c := range candidates {
+		if c.Weight <= 0 {
+			continue
+		}
+		violated := false
+		for _, pol := range c.Policies {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
+			if model.PolicyType(pol).Violated(ctx, userID, c.FeedID, resolver) {
+				violated = true
+				break
+			}
+		}
+		if violated {
+			continue
+		}
+		survivors = append(survivors, c)
+		totalWeight += uint64(c.Weight)
+	}
+
+	if len(survivors) == 0 {
+		return "", nil
+	}
+
+	h := fnv.New64a()
+	h.Write([]byte(userID + ":" + poolID))
+	point := h.Sum64() % totalWeight
+
+	acc := uint64(0)
+	for _, c := range survivors {
+		acc += uint64(c.Weight)
+		if point < acc {
+			return c.FeedID, nil
+		}
+	}
+	// Unreachable: point < totalWeight and the accumulator reaches totalWeight
+	// on the last survivor. Kept so a future refactor fails loudly, not silently.
+	return survivors[len(survivors)-1].FeedID, nil
 }
