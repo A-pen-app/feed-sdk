@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"hash/fnv"
 	"math/rand"
 	"slices"
@@ -269,6 +270,14 @@ func (s *Service[T]) GetRelatedFeeds(ctx context.Context, feedID string) ([]stri
 // When a candidate drops out (schedule ends, exposure cap reached, paused), its
 // users are redistributed among the remaining survivors by the same rule.
 func (s *Service[T]) PickFromPool(ctx context.Context, userID, poolID string, resolver model.PolicyResolver) (string, error) {
+	// Istarget evaluation calls straight into the resolver, and unlike the
+	// exposure path there is no per-policy nil check on this route — a nil
+	// resolver with an istarget candidate would panic mid-request. Fail loudly
+	// at the door instead.
+	if resolver == nil {
+		return "", errors.New("PickFromPool: resolver must not be nil")
+	}
+
 	candidates, err := s.store.GetPoolCandidates(ctx, poolID)
 	if err != nil {
 		return "", err
