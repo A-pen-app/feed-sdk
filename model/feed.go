@@ -101,6 +101,9 @@ type PolicyOption func(*PolicyOptions)
 // WithFailClosed hides the feed when a policy's resolver lookup fails.
 func WithFailClosed() PolicyOption { return func(o *PolicyOptions) { o.FailClosed = true } }
 
+// ApplyPolicyOptions folds opts onto the fail-open defaults.
+func ApplyPolicyOptions(opts ...PolicyOption) PolicyOptions { return applyPolicyOptions(opts) }
+
 func applyPolicyOptions(opts []PolicyOption) PolicyOptions {
 	var o PolicyOptions
 	for _, opt := range opts {

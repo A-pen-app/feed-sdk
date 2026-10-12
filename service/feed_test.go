@@ -1537,3 +1537,17 @@ func TestBuildPolicyViolationMapFailClosed(t *testing.T) {
 		t.Fatalf("fail-closed should flag the exposure policy, got %v", got)
 	}
 }
+
+func TestBuildPolicyViolationMapFailClosedOnNilResolverPanic(t *testing.T) {
+	ctx := context.Background()
+	svc := &Service[*MockPost]{}
+	// istarget dereferences the resolver without a nil check, so a nil resolver panics.
+	policyMap := map[string]*model.Policy{"p1": {Policies: []string{"istarget:cardiology"}}}
+
+	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, nil); len(got) != 0 {
+		t.Fatalf("fail-open default should swallow the panic, got %v", got)
+	}
+	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, nil, model.WithFailClosed()); got["p1"] != "istarget:cardiology" {
+		t.Fatalf("fail-closed should hide the feed after a panic, got %v", got)
+	}
+}
