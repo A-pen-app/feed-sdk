@@ -85,6 +85,50 @@ type PolicyResolver interface {
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
+// PolicyOptions tune how Violated treats a policy it cannot evaluate.
+type PolicyOptions struct {
+	// FailClosed makes a policy count as violated (feed hidden) when its
+	// resolver lookup fails. The default, fail-open, keeps the historical
+	// behaviour of showing the feed; it is also what let a broken exposure
+	// query silently disable every exposure cap for months, so operators
+	// pinning paid placements should turn this on.
+	FailClosed bool
+}
+
+// PolicyOption mutates PolicyOptions.
+type PolicyOption func(*PolicyOptions)
+
+// WithFailClosed hides the feed when a policy's resolver lookup fails.
+func WithFailClosed() PolicyOption { return func(o *PolicyOptions) { o.FailClosed = true } }
+
+func applyPolicyOptions(opts []PolicyOption) PolicyOptions {
+	var o PolicyOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return o
+}
+
+// PolicyResolverAlertKey is the value of the "alert_key" field on every log
+// line Violated writes when a resolver lookup fails. Build the log-based alert
+// on it rather than on the message text.
+const PolicyResolverAlertKey = "feed_policy_resolver_error"
+
+// resolverFailed logs a resolver failure with the fixed alert key and returns
+// the verdict the fail mode dictates.
+func resolverFailed(ctx context.Context, o PolicyOptions, err error, feedId string, p PolicyType, what string) bool {
+	logging.Errorw(ctx, "feed policy resolver failed",
+		"alert_key", PolicyResolverAlertKey,
+		"lookup", what,
+		"feed_id", feedId,
+		"policy", p,
+		"fail_closed", o.FailClosed,
+		"err", err)
+	return o.FailClosed
+}
+
 func (p PolicyType) String() string {
 	return string(p)
 }
@@ -117,7 +161,12 @@ loop:
 	return unique, duration, err
 }
 
-func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver) bool {
+// Violated reports whether feedId breaks policy p for userId. Malformed
+// policies never take effect (they are configuration errors, logged). A
+// resolver lookup failure is fail-open unless WithFailClosed is given; either
+// way it is logged with PolicyResolverAlertKey.
+func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver, opts ...PolicyOption) bool {
+	o := applyPolicyOptions(opts)
 	// whenever there is a violation to policy attribute, the post is removed from the feed
 	parsed := strings.Split(p.String(), ":")
 	if len(parsed) <= 1 {
@@ -148,8 +197,7 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 		}
 		views, err := resolver.GetPostViewCount(ctx, feedId, uniqueUser, duration)
 		if err != nil {
-			logging.Errorw(ctx, "failed getting post's view count, the policy will not take effect", "feed_id", feedId, "policy", p)
-			return false
+			return resolverFailed(ctx, o, err, feedId, p, "post_view_count")
 		}
 		if views > limit {
 			return true
@@ -166,8 +214,7 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 		}
 		views, err := resolver.GetViewerPostViewCount(ctx, feedId, parsed[2])
 		if err != nil {
-			logging.Errorw(ctx, "failed getting user's view count on post, the policy will not take effect", "feed_id", feedId, "policy", p)
-			return false
+			return resolverFailed(ctx, o, err, feedId, p, "viewer_post_view_count")
 		}
 		if views > limit {
 			return true
@@ -192,8 +239,7 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 		}
 	case Istarget.String(): // the target attribute which the feed should have a match
 		if userAttrs, err := resolver.GetUserAttribute(ctx, userId); err != nil {
-			logging.Errorw(ctx, "failed getting user attribute, the policy will not take effect", "feed_id", feedId, "policy", p)
-			return false
+			return resolverFailed(ctx, o, err, feedId, p, "user_attribute")
 		} else {
 			// Every segment after the policy name is one alternative, ORed together:
 			// "istarget:cardiology:neurology" matches a user holding either. Separate

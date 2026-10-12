@@ -202,7 +202,10 @@ func (s *Service[T]) DeleteFeedPosition(ctx context.Context, feedID string, posi
 	return s.store.DeleteFeedPosition(ctx, feedID, position)
 }
 
-func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
+// BuildPolicyViolationMap evaluates every policy per feed and returns the first
+// violated policy keyed by feed id. opts (e.g. model.WithFailClosed()) are passed
+// through to model.PolicyType.Violated.
+func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver, opts ...model.PolicyOption) map[string]string {
 	var (
 		violation = make(map[string]string)
 		mu        sync.Mutex
@@ -224,7 +227,7 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 					return
 				default:
 				}
-				if model.PolicyType(pol).Violated(ctx, userID, postID, resolver) {
+				if model.PolicyType(pol).Violated(ctx, userID, postID, resolver, opts...) {
 					mu.Lock()
 					violation[postID] = pol
 					mu.Unlock()
