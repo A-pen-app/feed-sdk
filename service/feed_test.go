@@ -1541,7 +1541,6 @@ func TestBuildPolicyViolationMapFailClosed(t *testing.T) {
 func TestBuildPolicyViolationMapFailClosedOnNilResolverPanic(t *testing.T) {
 	ctx := context.Background()
 	svc := &Service[*MockPost]{}
-	// istarget dereferences the resolver without a nil check, so a nil resolver panics.
 	policyMap := map[string]*model.Policy{"p1": {Policies: []string{"istarget:cardiology"}}}
 
 	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, nil); len(got) != 0 {

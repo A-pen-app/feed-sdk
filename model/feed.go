@@ -85,23 +85,14 @@ type PolicyResolver interface {
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
 }
 
-// PolicyOptions tune how Violated treats a policy it cannot evaluate.
 type PolicyOptions struct {
-	// FailClosed makes a policy count as violated (feed hidden) when its
-	// resolver lookup fails. The default, fail-open, keeps the historical
-	// behaviour of showing the feed; it is also what let a broken exposure
-	// query silently disable every exposure cap for months, so operators
-	// pinning paid placements should turn this on.
 	FailClosed bool
 }
 
-// PolicyOption mutates PolicyOptions.
 type PolicyOption func(*PolicyOptions)
 
-// WithFailClosed hides the feed when a policy's resolver lookup fails.
 func WithFailClosed() PolicyOption { return func(o *PolicyOptions) { o.FailClosed = true } }
 
-// ApplyPolicyOptions folds opts onto the fail-open defaults.
 func ApplyPolicyOptions(opts ...PolicyOption) PolicyOptions { return applyPolicyOptions(opts) }
 
 func applyPolicyOptions(opts []PolicyOption) PolicyOptions {
@@ -114,13 +105,8 @@ func applyPolicyOptions(opts []PolicyOption) PolicyOptions {
 	return o
 }
 
-// PolicyResolverAlertKey is the value of the "alert_key" field on every log
-// line Violated writes when a resolver lookup fails. Build the log-based alert
-// on it rather than on the message text.
 const PolicyResolverAlertKey = "feed_policy_resolver_error"
 
-// resolverFailed logs a resolver failure with the fixed alert key and returns
-// the verdict the fail mode dictates.
 func resolverFailed(ctx context.Context, o PolicyOptions, err error, feedId string, p PolicyType, what string) bool {
 	logging.Errorw(ctx, "feed policy resolver failed",
 		"alert_key", PolicyResolverAlertKey,
@@ -164,10 +150,6 @@ loop:
 	return unique, duration, err
 }
 
-// Violated reports whether feedId breaks policy p for userId. Malformed
-// policies never take effect (they are configuration errors, logged). A
-// resolver lookup failure is fail-open unless WithFailClosed is given; either
-// way it is logged with PolicyResolverAlertKey.
 func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolver PolicyResolver, opts ...PolicyOption) bool {
 	o := applyPolicyOptions(opts)
 	// whenever there is a violation to policy attribute, the post is removed from the feed

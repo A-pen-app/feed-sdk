@@ -202,9 +202,6 @@ func (s *Service[T]) DeleteFeedPosition(ctx context.Context, feedID string, posi
 	return s.store.DeleteFeedPosition(ctx, feedID, position)
 }
 
-// BuildPolicyViolationMap evaluates every policy per feed and returns the first
-// violated policy keyed by feed id. opts (e.g. model.WithFailClosed()) are passed
-// through to model.PolicyType.Violated.
 func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver, opts ...model.PolicyOption) map[string]string {
 	var (
 		violation = make(map[string]string)
@@ -213,9 +210,6 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 	)
 
 	o := model.ApplyPolicyOptions(opts...)
-	// failClosed records the feed as violated when a check could not run at
-	// all (panic, cancelled context) and the caller asked for fail-closed; the
-	// policy string is what the caller sees, so the first one stands in.
 	failClosed := func(postID string, policies []string, reason string) {
 		if !o.FailClosed || len(policies) == 0 {
 			return
