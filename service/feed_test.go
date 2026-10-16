@@ -1520,3 +1520,33 @@ func TestGetRelatedFeeds(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPolicyViolationMapFailClosed(t *testing.T) {
+	ctx := context.Background()
+	svc := &Service[*MockPost]{}
+	policyMap := map[string]*model.Policy{
+		"p1": {Policies: []string{"exposure:5"}},
+	}
+	broken := &mockPolicyResolver{err: errors.New("bigquery down")}
+
+	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, broken); len(got) != 0 {
+		t.Fatalf("fail-open default should not flag anything, got %v", got)
+	}
+	got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, broken, model.WithFailClosed())
+	if got["p1"] != "exposure:5" {
+		t.Fatalf("fail-closed should flag the exposure policy, got %v", got)
+	}
+}
+
+func TestBuildPolicyViolationMapFailClosedOnNilResolverPanic(t *testing.T) {
+	ctx := context.Background()
+	svc := &Service[*MockPost]{}
+	policyMap := map[string]*model.Policy{"p1": {Policies: []string{"istarget:cardiology"}}}
+
+	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, nil); len(got) != 0 {
+		t.Fatalf("fail-open default should swallow the panic, got %v", got)
+	}
+	if got := svc.BuildPolicyViolationMap(ctx, "u", policyMap, nil, model.WithFailClosed()); got["p1"] != "istarget:cardiology" {
+		t.Fatalf("fail-closed should hide the feed after a panic, got %v", got)
+	}
+}

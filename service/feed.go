@@ -202,12 +202,23 @@ func (s *Service[T]) DeleteFeedPosition(ctx context.Context, feedID string, posi
 	return s.store.DeleteFeedPosition(ctx, feedID, position)
 }
 
-func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver) map[string]string {
+func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string, policyMap map[string]*model.Policy, resolver model.PolicyResolver, opts ...model.PolicyOption) map[string]string {
 	var (
 		violation = make(map[string]string)
 		mu        sync.Mutex
 		wg        sync.WaitGroup
 	)
+
+	o := model.ApplyPolicyOptions(opts...)
+	failClosed := func(postID string, policies []string, reason string) {
+		if !o.FailClosed || len(policies) == 0 {
+			return
+		}
+		logging.Errorw(ctx, "feed policy check aborted, hiding feed (fail-closed)", "alert_key", model.PolicyResolverAlertKey, "feed_id", postID, "reason", reason)
+		mu.Lock()
+		violation[postID] = policies[0]
+		mu.Unlock()
+	}
 
 	for postID, policy := range policyMap {
 		wg.Add(1)
@@ -216,15 +227,17 @@ func (f *Service[T]) BuildPolicyViolationMap(ctx context.Context, userID string,
 			defer func() {
 				if r := recover(); r != nil {
 					logging.Errorw(ctx, "panic recovered in policy violation check", "post_id", postID, "error", r)
+					failClosed(postID, policies, "panic")
 				}
 			}()
 			for _, pol := range policies {
 				select {
 				case <-ctx.Done():
+					failClosed(postID, policies, "context done")
 					return
 				default:
 				}
-				if model.PolicyType(pol).Violated(ctx, userID, postID, resolver) {
+				if model.PolicyType(pol).Violated(ctx, userID, postID, resolver, opts...) {
 					mu.Lock()
 					violation[postID] = pol
 					mu.Unlock()
