@@ -77,12 +77,34 @@ const (
 	Distinct PolicyType = "distinct"
 	Duration PolicyType = "duration"
 	IsTheOne PolicyType = "istheone"
+	DailyCap PolicyType = "dailycap"
+	Audience PolicyType = "audience"
+)
+
+const (
+	DailyCapMin int64 = 1
+	DailyCapMax int64 = 10
 )
 
 type PolicyResolver interface {
 	GetPostViewCount(ctx context.Context, postID string, uniqueUser bool, duration int64) (int64, error)
 	GetViewerPostViewCount(ctx context.Context, postID, userID string) (int64, error)
 	GetUserAttribute(ctx context.Context, userID string) ([]string, error)
+}
+
+// ExposureResolver answers how many times the viewer has already seen the feed
+// today (Asia/Taipei calendar day). A resolver that does not implement it makes
+// every dailycap policy a no-op, so an app can bump the SDK before it has the
+// per-viewer count.
+type ExposureResolver interface {
+	GetViewerTodayExposure(ctx context.Context, feedID, userID string) (int64, error)
+}
+
+// AudienceResolver answers whether the viewer belongs to at least one of the
+// audience packs. Like ExposureResolver it is optional: without it every
+// audience policy is a no-op.
+type AudienceResolver interface {
+	IsViewerInAudience(ctx context.Context, userID string, packIDs []string) (bool, error)
 }
 
 type PolicyOptions struct {
@@ -254,6 +276,38 @@ func (p PolicyType) Violated(ctx context.Context, userId, feedId string, resolve
 				return true
 			}
 			// matched - no violation, return false to next policy
+		}
+	case DailyCap.String(): // per-viewer, per-day cap: hidden once the viewer saw it this many times today
+		limit, err := strconv.ParseInt(rawParam, 10, 64)
+		if err != nil || limit < DailyCapMin || limit > DailyCapMax {
+			logging.Errorw(ctx, "failed parsing dailycap, the policy will not take effect", "feed_id", feedId, "policy", p, "param", rawParam, "err", err)
+			return false
+		}
+		er, ok := resolver.(ExposureResolver)
+		if !ok {
+			logging.Warn(ctx, "resolver has no ExposureResolver, dailycap will not take effect feed_id=%s policy=%s", feedId, p)
+			return false
+		}
+		seen, err := er.GetViewerTodayExposure(ctx, feedId, userId)
+		if err != nil {
+			return resolverFailed(ctx, o, err, feedId, p, "viewer_today_exposure")
+		}
+		if seen >= limit {
+			return true
+		}
+	case Audience.String(): // hidden from viewers outside every listed audience pack (union)
+		packIDs := parsed[1:]
+		ar, ok := resolver.(AudienceResolver)
+		if !ok {
+			logging.Warn(ctx, "resolver has no AudienceResolver, audience will not take effect feed_id=%s policy=%s", feedId, p)
+			return false
+		}
+		in, err := ar.IsViewerInAudience(ctx, userId, packIDs)
+		if err != nil {
+			return resolverFailed(ctx, o, err, feedId, p, "viewer_in_audience")
+		}
+		if !in {
+			return true
 		}
 	default:
 		logging.Errorw(ctx, "unknown policy, the policy will not take effect", "feed_id", feedId, "policy", p)
