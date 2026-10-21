@@ -105,6 +105,19 @@ type PolicyResolver interface {
 }
 ```
 
+Two policy types need more than that and look for optional interfaces on the same
+resolver value. A resolver without them simply never enforces those policies, so an
+app can upgrade the SDK before it can answer them:
+
+```go
+type ExposureResolver interface { // dailycap
+    GetViewerTodayExposure(ctx context.Context, feedID, userID string) (int64, error)
+}
+type AudienceResolver interface { // audience
+    IsViewerInAudience(ctx context.Context, userID string, packIDs []string) (bool, error)
+}
+```
+
 Then build a violation map:
 
 ```go
@@ -123,6 +136,8 @@ The SDK supports the following policy types for controlling feed visibility:
 | `inexpose` | `inexpose:{timestamp}` | Feed becomes visible after the specified Unix timestamp |
 | `unexpose` | `unexpose:{timestamp}` | Feed becomes hidden after the specified Unix timestamp |
 | `istarget` | `istarget:{attribute}[:{attribute}...]` | Feed is only visible to users holding **at least one** of the listed attributes. Matched case-insensitively against `GetUserAttribute`, since the policy format constraint only accepts lower-case params. |
+| `dailycap` | `dailycap:{n}` (1–10) | Hidden from a viewer who has already seen the feed `n` times today (Asia/Taipei day, per `GetViewerTodayExposure`). Needs `ExposureResolver`. |
+| `audience` | `audience:{packId}[:{packId}...]` | Visible only to viewers inside **at least one** of the listed audience packs (`IsViewerInAudience`). Needs `AudienceResolver`. |
 
 ### Policy Examples
 
@@ -135,6 +150,8 @@ inexpose:1735689600                        # Hidden until Jan 1, 2025
 unexpose:1735689600                        # Visible until Jan 1, 2025
 istarget:premium                           # Only for users with "premium" attribute
 istarget:cardiology:neurology              # Users with either attribute (OR)
+dailycap:2                                 # Each viewer sees it at most twice a day
+audience:9f1c...:2b7d...                   # Only viewers in either audience pack (OR)
 ```
 
 Alternatives inside one `istarget` are ORed; separate `istarget` policies are ANDed
